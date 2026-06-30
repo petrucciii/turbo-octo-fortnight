@@ -1,4 +1,4 @@
-import { Coordinate, RouteInfo, RouteInstruction } from '../types/navigation';
+import { Coordinate, RouteInfo, RouteInstruction, RouteProgress } from '../types/navigation';
 import { calculateDistanceBetweenCoordinates } from './geo';
 import { calculateBearing } from './motion';
 
@@ -110,4 +110,21 @@ export const getManeuverRouteCue = (
       heading,
     },
   };
+};
+
+export const getContextualManeuverRouteCue = (
+  route: RouteInfo | null,
+  progress: RouteProgress | null,
+  nextManeuverWindowKm = 0.7
+): ManeuverRouteCue | null => {
+  if (!route || !progress) return null;
+
+  const currentCue = getManeuverRouteCue(route, progress.currentInstruction);
+  if (currentCue) return currentCue;
+
+  const canShowNext =
+    progress.instructionDistanceRemainingKm !== null &&
+    progress.instructionDistanceRemainingKm <= nextManeuverWindowKm;
+
+  return canShowNext ? getManeuverRouteCue(route, progress.nextInstruction) : null;
 };

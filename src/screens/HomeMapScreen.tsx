@@ -36,7 +36,7 @@ import {
   smoothSpeedKmh,
 } from '../utils/motion';
 import { distancePointToSegmentMeters } from '../utils/segmentDistance';
-import { getManeuverRouteCue } from '../utils/routeArrows';
+import { getContextualManeuverRouteCue } from '../utils/routeArrows';
 
 const TUTOR_WARNING_DISTANCE_KM = 1;
 const REROUTE_COOLDOWN_MS = 15_000;
@@ -82,6 +82,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const [isFollowingUser, setIsFollowingUser] = useState(false);
   const [mapType, setMapType] = useState<MapDisplayType>('hybrid');
   const [recenterRequestId, setRecenterRequestId] = useState(0);
+  const [mapOverlayResetKey, setMapOverlayResetKey] = useState(0);
   const [pendingUseCurrentOrigin, setPendingUseCurrentOrigin] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [currentRouteProgress, setCurrentRouteProgress] = useState<RouteProgress | null>(null);
@@ -107,6 +108,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const lastStableSpeedRef = useRef<number | null>(null);
   const deviceHeadingRef = useRef<number | null>(null);
   const arrivalHandledRef = useRef(false);
+  const routeRequestIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
 
@@ -279,13 +281,23 @@ export const HomeMapScreen = ({ navigation }: any) => {
     if (!origin || !destination || isNavigating) return;
 
     let cancelled = false;
+    const requestId = routeRequestIdRef.current + 1;
+    routeRequestIdRef.current = requestId;
 
     const calculateRoute = async () => {
       setIsCalculatingRoute(true);
       setRouteError(null);
       const nextRoute = await getDirections(origin.location, destination.location);
 
-      if (cancelled) return;
+      const latestNavigationState = useNavigationStore.getState();
+      const isStaleRequest =
+        cancelled ||
+        routeRequestIdRef.current !== requestId ||
+        !latestNavigationState.origin ||
+        !latestNavigationState.destination ||
+        latestNavigationState.isNavigating;
+
+      if (isStaleRequest) return;
 
       if (!nextRoute) {
         setRoute(null);
@@ -316,13 +328,17 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [tutorStore]);
 
   const resetNavigationState = useCallback((mode: 'stop' | 'clear') => {
+    routeRequestIdRef.current += 1;
+
     if (mode === 'stop') {
       stopNavigation();
     } else {
       clearNavigationPlan();
-      setDestination(null);
     }
 
+    setRoute(null);
+    setOrigin(null);
+    setDestination(null);
     setIsFollowingUser(false);
     setIsRerouting(false);
     setIsCalculatingRoute(false);
@@ -335,8 +351,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
     isReroutingRef.current = false;
     arrivalHandledRef.current = false;
     resetTutorRuntime();
+    setMapOverlayResetKey((value) => value + 1);
     setRecenterRequestId((value) => value + 1);
-  }, [clearNavigationPlan, resetTutorRuntime, setDestination, stopNavigation]);
+  }, [clearNavigationPlan, resetTutorRuntime, setDestination, setOrigin, setRoute, stopNavigation]);
 
   const cancelPlan = useCallback(() => {
     resetNavigationState('clear');
@@ -372,15 +389,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [resetNavigationState]);
 
   const closeArrivalPrompt = useCallback(() => {
-    setArrivalPromptVisible(false);
-    setRecenterRequestId((value) => value + 1);
-  }, []);
+    resetNavigationState('stop');
+  }, [resetNavigationState]);
 
   const startNewDestinationAfterArrival = useCallback(() => {
-    setArrivalPromptVisible(false);
-    setRecenterRequestId((value) => value + 1);
+    resetNavigationState('stop');
     navigation.navigate('SearchDestination', { mode: 'destination' });
-  }, [navigation]);
+  }, [navigation, resetNavigationState]);
 
   const recenterOnUser = useCallback(() => {
     setIsFollowingUser(true);
@@ -641,7 +656,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     upcomingTutor?.match.segment.speed_limit_kmh ??
     null;
   const maneuverCue = isNavigating
-    ? getManeuverRouteCue(route, currentRouteProgress?.currentInstruction ?? null)
+    ? getContextualManeuverRouteCue(route, currentRouteProgress)
     : null;
 
   return (
@@ -657,6 +672,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
         isNavigating={isNavigating}
         mapType={mapType}
         maneuverCue={maneuverCue}
+        overlayResetKey={mapOverlayResetKey}
         followUserLocation={isFollowingUser}
         recenterRequestId={recenterRequestId}
         onUserGesture={handleMapGesture}
@@ -775,7 +791,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
         </>
       ) : null}
 
-      {!isNavigating ? (
+      {!isNavigating && !origin && !destination && !route ? (
         <View style={styles.topRightControls}>
           <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Settings')}>
             <Text style={styles.iconText}>SET</Text>

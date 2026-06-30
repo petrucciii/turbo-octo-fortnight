@@ -17,6 +17,7 @@ interface Props {
   isNavigating: boolean;
   mapType: MapDisplayType;
   maneuverCue: ManeuverRouteCue | null;
+  overlayResetKey: number;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
@@ -48,6 +49,7 @@ export const MapViewComponent: React.FC<Props> = ({
   isNavigating,
   mapType,
   maneuverCue,
+  overlayResetKey,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
@@ -125,7 +127,7 @@ export const MapViewComponent: React.FC<Props> = ({
         }}
       >
         {route ? (
-          <>
+          <React.Fragment key={`route-${overlayResetKey}-${route.polyline.length}`}>
             <Polyline
               coordinates={route.polyline}
               strokeColor="rgba(255,255,255,0.92)"
@@ -156,7 +158,7 @@ export const MapViewComponent: React.FC<Props> = ({
                 <View style={[styles.routeArrow, { transform: [{ rotate: `${maneuverCue.arrow.heading}deg` }] }]} />
               </Marker>
             ) : null}
-          </>
+          </React.Fragment>
         ) : null}
 
         {origin && !isNavigating ? (
@@ -173,7 +175,7 @@ export const MapViewComponent: React.FC<Props> = ({
           const end = { latitude: segment.end_latitude, longitude: segment.end_longitude };
 
           return (
-            <React.Fragment key={segment.id}>
+            <React.Fragment key={`${overlayResetKey}-${segment.id}`}>
               <Polyline
                 coordinates={[start, end]}
                 strokeColor={isActive ? '#00c853' : '#ff8f00'}

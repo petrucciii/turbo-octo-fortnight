@@ -16,6 +16,7 @@ interface Props {
   isNavigating: boolean;
   mapType: MapDisplayType;
   maneuverCue: ManeuverRouteCue | null;
+  overlayResetKey: number;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
@@ -69,6 +70,7 @@ export const MapViewComponent: React.FC<Props> = ({
   isNavigating,
   mapType,
   maneuverCue,
+  overlayResetKey,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
@@ -94,6 +96,35 @@ export const MapViewComponent: React.FC<Props> = ({
     map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
       animate,
     });
+  };
+
+  const clearRouteLayers = () => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    if (routeLayerRef.current) {
+      map.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+    if (routeOutlineLayerRef.current) {
+      map.removeLayer(routeOutlineLayerRef.current);
+      routeOutlineLayerRef.current = null;
+    }
+    if (maneuverCueLayerRef.current) {
+      map.removeLayer(maneuverCueLayerRef.current);
+      maneuverCueLayerRef.current = null;
+    }
+    routeArrowMarkersRef.current.forEach((marker) => map.removeLayer(marker));
+    routeArrowMarkersRef.current = [];
+  };
+
+  const clearNavigationLayers = () => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    clearRouteLayers();
+    markersRef.current.forEach((marker) => map.removeLayer(marker));
+    markersRef.current = [];
   };
 
   useEffect(() => {
@@ -228,23 +259,15 @@ export const MapViewComponent: React.FC<Props> = ({
   }, [recenterRequestId]);
 
   useEffect(() => {
+    clearNavigationLayers();
+    centerOnUser(true);
+  }, [overlayResetKey]);
+
+  useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
-    if (routeLayerRef.current) {
-      map.removeLayer(routeLayerRef.current);
-      routeLayerRef.current = null;
-    }
-    if (routeOutlineLayerRef.current) {
-      map.removeLayer(routeOutlineLayerRef.current);
-      routeOutlineLayerRef.current = null;
-    }
-    routeArrowMarkersRef.current.forEach((marker) => map.removeLayer(marker));
-    routeArrowMarkersRef.current = [];
-    if (maneuverCueLayerRef.current) {
-      map.removeLayer(maneuverCueLayerRef.current);
-      maneuverCueLayerRef.current = null;
-    }
+    clearRouteLayers();
 
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
@@ -288,7 +311,7 @@ export const MapViewComponent: React.FC<Props> = ({
         map.fitBounds(routeLayerRef.current.getBounds(), { padding: [70, 70] });
       }
     }
-  }, [route, maneuverCue, isNavigating, LLib]);
+  }, [route, maneuverCue, isNavigating, overlayResetKey, LLib]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
@@ -368,7 +391,7 @@ export const MapViewComponent: React.FC<Props> = ({
         LLib.marker(start, { icon: labelIcon }).addTo(map)
       );
     });
-  }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, LLib]);
+  }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, overlayResetKey, LLib]);
 
   if (!leafletLoaded) {
     return (
