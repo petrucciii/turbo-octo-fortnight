@@ -14,7 +14,11 @@ export const UserPositionArrow: React.FC<Props> = ({ heading, isNavigating }) =>
   const rotation = getSafeHeading(heading);
 
   return (
-    <View style={[styles.container, isNavigating && styles.containerNavigating, { transform: [{ rotate: `${rotation}deg` }] }]}>
+    <View
+      collapsable={false}
+      pointerEvents="none"
+      style={[styles.container, isNavigating && styles.containerNavigating, { transform: [{ rotate: `${rotation}deg` }] }]}
+    >
       <View style={[styles.glow, isNavigating && styles.glowNavigating]} />
       <View style={styles.headOutline} />
       <View style={styles.tailOutline} />

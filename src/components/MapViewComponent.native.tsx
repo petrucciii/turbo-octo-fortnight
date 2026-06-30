@@ -59,22 +59,27 @@ const UserLocationLayer = React.memo(
   ({
     coordinate,
     heading,
-    isNavigating,
   }: {
     coordinate: Coordinate;
     heading: number;
-    isNavigating: boolean;
-  }) => (
-    <Marker
-      identifier="permanent-user-location-marker"
-      coordinate={coordinate}
-      anchor={{ x: 0.5, y: 0.5 }}
-      zIndex={9999}
-      tracksViewChanges
-    >
-      <UserPositionArrow heading={heading} isNavigating={isNavigating} />
-    </Marker>
-  )
+  }) => {
+    console.log('USER LOCATION LAYER RENDER', {
+      coordinate,
+      heading,
+    });
+
+    return (
+      <Marker
+        identifier="user-location-permanent"
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        zIndex={99999}
+        tracksViewChanges
+      >
+        <UserPositionArrow heading={heading} isNavigating={false} />
+      </Marker>
+    );
+  }
 );
 
 export const MapViewComponent: React.FC<Props> = ({
@@ -182,7 +187,7 @@ export const MapViewComponent: React.FC<Props> = ({
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
-        showsUserLocation={false}
+        showsUserLocation
         showsCompass={false}
         showsMyLocationButton={false}
         rotateEnabled
@@ -191,15 +196,6 @@ export const MapViewComponent: React.FC<Props> = ({
           if (isNavigating) onUserGesture();
         }}
       >
-        {visibleUserLocation ? (
-          <UserLocationLayer
-            key="permanent-user-location-layer"
-            coordinate={visibleUserLocation}
-            heading={safeHeading}
-            isNavigating={isNavigating}
-          />
-        ) : null}
-
         {route ? (
           <React.Fragment key={routeKey}>
             <Polyline
@@ -285,6 +281,12 @@ export const MapViewComponent: React.FC<Props> = ({
           );
         })}
 
+        {visibleUserLocation ? (
+          <UserLocationLayer
+            coordinate={visibleUserLocation}
+            heading={safeHeading}
+          />
+        ) : null}
       </MapView>
     </View>
   );

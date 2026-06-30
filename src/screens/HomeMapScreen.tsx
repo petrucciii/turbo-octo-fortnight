@@ -62,7 +62,13 @@ const isValidLocationData = (location: LocationData | null | undefined): locatio
 };
 
 export const HomeMapScreen = ({ navigation }: any) => {
-  const { currentLocation, lastKnownLocation, requestLocationPermission } = useLocationStore();
+  const {
+    currentLocation,
+    lastKnownLocation,
+    heading,
+    lastValidHeading,
+    requestLocationPermission,
+  } = useLocationStore();
   const {
     origin,
     destination,
@@ -353,7 +359,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     tutorStore.reset();
   }, [tutorStore]);
 
-  const resetNavigationState = useCallback((mode: 'stop' | 'clear') => {
+  const resetNavigationOnly = useCallback((mode: 'stop' | 'clear') => {
     routeRequestIdRef.current += 1;
 
     if (mode === 'stop') {
@@ -382,8 +388,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [clearNavigationPlan, resetTutorRuntime, setDestination, setOrigin, setRoute, stopNavigation]);
 
   const cancelPlan = useCallback(() => {
-    resetNavigationState('clear');
-  }, [resetNavigationState]);
+    resetNavigationOnly('clear');
+  }, [resetNavigationOnly]);
 
   const useCurrentLocationAsOrigin = useCallback(() => {
     const originLocation = currentLocation ?? lastKnownLocation;
@@ -413,17 +419,41 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
-    resetNavigationState('stop');
-  }, [resetNavigationState]);
+    const beforeLocationState = useLocationStore.getState();
+    const beforeNavigationState = useNavigationStore.getState();
+    console.log('EXIT PRESSED - BEFORE', {
+      currentLocation: beforeLocationState.currentLocation,
+      lastKnownLocation: beforeLocationState.lastKnownLocation,
+      persistentUserLocation,
+      heading: beforeLocationState.heading,
+      lastValidHeading: beforeLocationState.lastValidHeading,
+      isNavigating: beforeNavigationState.isNavigating,
+      hasRoute: !!beforeNavigationState.route,
+    });
+
+    resetNavigationOnly('stop');
+
+    const afterLocationState = useLocationStore.getState();
+    const afterNavigationState = useNavigationStore.getState();
+    console.log('EXIT PRESSED - AFTER', {
+      currentLocation: afterLocationState.currentLocation,
+      lastKnownLocation: afterLocationState.lastKnownLocation,
+      persistentUserLocation,
+      heading: afterLocationState.heading,
+      lastValidHeading: afterLocationState.lastValidHeading,
+      isNavigating: afterNavigationState.isNavigating,
+      hasRoute: !!afterNavigationState.route,
+    });
+  }, [persistentUserLocation, resetNavigationOnly]);
 
   const closeArrivalPrompt = useCallback(() => {
-    resetNavigationState('stop');
-  }, [resetNavigationState]);
+    resetNavigationOnly('stop');
+  }, [resetNavigationOnly]);
 
   const startNewDestinationAfterArrival = useCallback(() => {
-    resetNavigationState('stop');
+    resetNavigationOnly('stop');
     navigation.navigate('SearchDestination', { mode: 'destination' });
-  }, [navigation, resetNavigationState]);
+  }, [navigation, resetNavigationOnly]);
 
   const recenterOnUser = useCallback(() => {
     setIsFollowingUser(true);
@@ -657,7 +687,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     if (progress.distanceRemainingKm <= ARRIVAL_THRESHOLD_KM && !arrivalHandledRef.current) {
       arrivalHandledRef.current = true;
       speak('Sei arrivato a destinazione.');
-      resetNavigationState('stop');
+      resetNavigationOnly('stop');
       setArrivalPromptVisible(true);
       return;
     }
@@ -665,13 +695,23 @@ export const HomeMapScreen = ({ navigation }: any) => {
     if (progress.isOffRoute) {
       void rerouteFromCurrentLocation(locData.coordinate);
     }
-  }, [handleTutorSafeTick, rerouteFromCurrentLocation, resetNavigationState, updateRouteProgress]);
+  }, [handleTutorSafeTick, rerouteFromCurrentLocation, resetNavigationOnly, updateRouteProgress]);
 
   useEffect(() => {
     handleNavigationTickRef.current = handleNavigationTick;
   }, [handleNavigationTick]);
 
-  const visibleUserLocation = storeUserLocation ?? persistentUserLocation;
+  const visibleLocationData =
+    currentLocation ??
+    lastKnownLocation ??
+    persistentUserLocation;
+  const visibleUserCoordinate = visibleLocationData?.coordinate ?? null;
+  const safeHeading =
+    visibleLocationData?.heading ??
+    heading ??
+    lastValidHeading ??
+    0;
+  const visibleUserLocation = visibleLocationData;
   const activeTutorDistanceRemainingKm = tutorStore.activeTutorSegment
     ? Math.max(0, tutorStore.activeTutorSegment.segment_length_km - tutorStore.distanceTravelledKm)
     : 0;
@@ -694,14 +734,14 @@ export const HomeMapScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <MapViewComponent
-        userLocation={visibleUserLocation?.coordinate || null}
+        userLocation={visibleUserCoordinate}
         origin={origin?.location || null}
         route={route}
         tutorSegments={visibleTutorSegments}
         tutorMatches={route ? routeTutorMatches : []}
         activeTutorSegment={tutorStore.activeTutorSegment}
         destination={destination?.location || null}
-        heading={visibleUserLocation?.heading ?? null}
+        heading={safeHeading}
         isNavigating={isNavigating}
         mapType={mapType}
         maneuverCue={maneuverCue}
