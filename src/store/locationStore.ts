@@ -4,6 +4,7 @@ import { LocationData } from '../types/location';
 
 interface LocationState {
   currentLocation: LocationData | null;
+  lastKnownLocation: LocationData | null;
   currentSpeedKmh: number | null;
   heading: number | null;
   locationPermission: Location.PermissionStatus | null;
@@ -14,11 +15,13 @@ interface LocationState {
 
 export const useLocationStore = create<LocationState>((set) => ({
   currentLocation: null,
+  lastKnownLocation: null,
   currentSpeedKmh: null,
   heading: null,
   locationPermission: null,
   setCurrentLocation: (location) => set({ 
     currentLocation: location,
+    lastKnownLocation: location,
     currentSpeedKmh: location.speedKmh,
     heading: location.heading
   }),

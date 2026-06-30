@@ -38,6 +38,10 @@ const getCameraCenter = (coordinate: Coordinate, heading: number | null): Coordi
   return projectCoordinate(coordinate, heading, 72);
 };
 
+const getSafeHeading = (heading: number | null): number => {
+  return typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
+};
+
 export const MapViewComponent: React.FC<Props> = ({
   userLocation,
   origin,
@@ -56,15 +60,20 @@ export const MapViewComponent: React.FC<Props> = ({
 }) => {
   const mapRef = useRef<MapView | null>(null);
   const hasCenteredInitialLocationRef = useRef(false);
+  const safeHeading = getSafeHeading(heading);
+  const cameraHeading = typeof heading === 'number' && Number.isFinite(heading) ? safeHeading : null;
+  const routeKey = route
+    ? `${overlayResetKey}-${route.polyline.length}-${route.distanceKm.toFixed(3)}-${destination?.latitude ?? 'no-dest'}-${destination?.longitude ?? 'no-dest'}`
+    : `no-route-${overlayResetKey}`;
 
   const animateToUser = (duration = 700) => {
     if (!mapRef.current || !userLocation) return;
 
     mapRef.current.animateCamera(
       {
-        center: getCameraCenter(userLocation, heading),
+        center: getCameraCenter(userLocation, cameraHeading),
         pitch: isNavigating ? 58 : 0,
-        heading: isNavigating ? heading ?? 0 : 0,
+        heading: isNavigating ? safeHeading : 0,
         zoom: isNavigating ? 18 : 15,
       },
       { duration }
@@ -127,14 +136,16 @@ export const MapViewComponent: React.FC<Props> = ({
         }}
       >
         {route ? (
-          <React.Fragment key={`route-${overlayResetKey}-${route.polyline.length}`}>
+          <React.Fragment key={routeKey}>
             <Polyline
+              key={`route-outline-${routeKey}`}
               coordinates={route.polyline}
               strokeColor="rgba(255,255,255,0.92)"
               strokeWidth={9}
               zIndex={1}
             />
             <Polyline
+              key={`route-main-${routeKey}`}
               coordinates={route.polyline}
               strokeColor="#7C3AED"
               strokeWidth={5}
@@ -142,6 +153,7 @@ export const MapViewComponent: React.FC<Props> = ({
             />
             {maneuverCue?.section && maneuverCue.section.length > 1 ? (
               <Polyline
+                key={`route-cue-${routeKey}-${maneuverCue.id}`}
                 coordinates={maneuverCue.section}
                 strokeColor="#22D3EE"
                 strokeWidth={7}
@@ -177,6 +189,7 @@ export const MapViewComponent: React.FC<Props> = ({
           return (
             <React.Fragment key={`${overlayResetKey}-${segment.id}`}>
               <Polyline
+                key={`tutor-line-${overlayResetKey}-${segment.id}`}
                 coordinates={[start, end]}
                 strokeColor={isActive ? '#00c853' : '#ff8f00'}
                 strokeWidth={isActive ? 9 : 7}
@@ -205,8 +218,9 @@ export const MapViewComponent: React.FC<Props> = ({
 
         {userLocation ? (
           <Marker coordinate={userLocation} anchor={{ x: 0.5, y: 0.5 }} zIndex={1000}>
-            <View style={[styles.userArrowShell, { transform: [{ rotate: `${heading ?? 0}deg` }] }]}>
-              <View style={styles.userArrow} />
+            <View style={[styles.userArrowShell, { transform: [{ rotate: `${safeHeading}deg` }] }]}>
+              <View style={styles.userArrowHead} />
+              <View style={styles.userArrowTail} />
             </View>
           </Marker>
         ) : null}
@@ -231,28 +245,34 @@ const styles = StyleSheet.create({
     left: 0,
   },
   userArrowShell: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(17,24,39,0.72)',
+    width: 30,
+    height: 30,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
     elevation: 8,
     justifyContent: 'center',
   },
-  userArrow: {
+  userArrowHead: {
     width: 0,
     height: 0,
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderBottomWidth: 22,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 17,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#38BDF8',
-    transform: [{ translateY: -2 }],
+    borderBottomColor: '#22D3EE',
+  },
+  userArrowTail: {
+    width: 6,
+    height: 9,
+    marginTop: -3,
+    borderRadius: 3,
+    backgroundColor: '#0284C7',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.72)',
   },
   routeArrow: {
     width: 0,

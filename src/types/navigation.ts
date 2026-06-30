@@ -15,6 +15,7 @@ export interface Place {
   name: string;
   address: string;
   location: Coordinate;
+  distanceKm?: number;
 }
 
 export interface RouteInfo {

@@ -23,26 +23,33 @@ interface Props {
 }
 
 const getUserArrowHtml = (heading: number | null): string => {
-  const rotation = heading ?? 0;
+  const rotation = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
   return `<div style="
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
     position: relative;
     transform: rotate(${rotation}deg);
-    transform-origin: 17px 17px;
-    border-radius: 17px;
-    background: rgba(17,24,39,.72);
-    box-shadow: 0 3px 10px rgba(0,0,0,.38);
+    transform-origin: 15px 15px;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,.42));
   ">
     <div style="
       position: absolute;
-      left: 8px;
-      top: 4px;
-      width: 0;
-      height: 0;
-      border-left: 9px solid transparent;
-      border-right: 9px solid transparent;
-      border-bottom: 22px solid #38BDF8;
+      left: 7px;
+      top: 2px;
+      width: 16px;
+      height: 24px;
+      background: linear-gradient(180deg,#67E8F9 0%,#0284C7 100%);
+      clip-path: polygon(50% 0%, 88% 82%, 50% 68%, 12% 82%);
+      border-radius: 8px;
+    "></div>
+    <div style="
+      position: absolute;
+      left: 12px;
+      top: 13px;
+      width: 6px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(8,47,73,.9);
     "></div>
   </div>`;
 };
@@ -92,7 +99,8 @@ export const MapViewComponent: React.FC<Props> = ({
   const centerOnUser = (animate = true) => {
     if (!mapInstanceRef.current || !userLocation) return;
     const map = mapInstanceRef.current;
-    const center = heading !== null ? projectCoordinate(userLocation, heading, 62) : userLocation;
+    const safeHeading = typeof heading === 'number' && Number.isFinite(heading) ? heading : null;
+    const center = safeHeading !== null ? projectCoordinate(userLocation, safeHeading, 62) : userLocation;
     map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
       animate,
     });
@@ -233,8 +241,8 @@ export const MapViewComponent: React.FC<Props> = ({
     const icon = LLib.divIcon({
       className: '',
       html: getUserArrowHtml(heading),
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
     });
 
     if (userMarkerRef.current) {

@@ -19,7 +19,7 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
   const [results, setResults] = useState<Place[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { setDestination, setOrigin, setRoute } = useNavigationStore();
-  const { currentLocation } = useLocationStore();
+  const { currentLocation, lastKnownLocation } = useLocationStore();
   const mode: 'origin' | 'destination' = route?.params?.mode === 'origin' ? 'origin' : 'destination';
   const title = mode === 'origin' ? 'Scegli punto di partenza' : 'Cerca destinazione';
 
@@ -28,7 +28,8 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
     if (text.length > 2) {
       setIsSearching(true);
       try {
-        const places = await searchPlaces(text, currentLocation?.coordinate ?? null);
+        const searchLocation = currentLocation?.coordinate ?? lastKnownLocation?.coordinate ?? null;
+        const places = await searchPlaces(text, searchLocation);
         setResults(places);
       } finally {
         setIsSearching(false);
@@ -47,6 +48,14 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
       setDestination(place);
     }
     navigation.goBack();
+  };
+
+  const getAddressText = (place: Place): string => {
+    if (typeof place.distanceKm !== 'number' || !Number.isFinite(place.distanceKm)) return place.address;
+    const distanceText = place.distanceKm < 1
+      ? `${Math.round(place.distanceKm * 1000)} m`
+      : `${Math.round(place.distanceKm)} km`;
+    return `${place.address} - ${distanceText}`;
   };
 
   return (
@@ -70,7 +79,7 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
             <Text style={styles.resultName}>{item.name}</Text>
-            <Text style={styles.resultAddress}>{item.address}</Text>
+            <Text style={styles.resultAddress}>{getAddressText(item)}</Text>
           </TouchableOpacity>
         )}
         ListHeaderComponent={

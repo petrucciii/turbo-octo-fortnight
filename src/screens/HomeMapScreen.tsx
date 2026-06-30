@@ -54,7 +54,7 @@ const createCurrentLocationPlace = (coordinate: Coordinate): Place => ({
 });
 
 export const HomeMapScreen = ({ navigation }: any) => {
-  const { currentLocation, requestLocationPermission } = useLocationStore();
+  const { currentLocation, lastKnownLocation, requestLocationPermission } = useLocationStore();
   const {
     origin,
     destination,
@@ -128,12 +128,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [route, tutorStore.tutorSegments]);
 
   useEffect(() => {
-    if (!pendingUseCurrentOrigin || !currentLocation) return;
+    const originLocation = currentLocation ?? lastKnownLocation;
+    if (!pendingUseCurrentOrigin || !originLocation) return;
 
     setPendingUseCurrentOrigin(false);
     setRoute(null);
-    setOrigin(createCurrentLocationPlace(currentLocation.coordinate));
-  }, [currentLocation, pendingUseCurrentOrigin, setOrigin, setRoute]);
+    setOrigin(createCurrentLocationPlace(originLocation.coordinate));
+  }, [currentLocation, lastKnownLocation, pendingUseCurrentOrigin, setOrigin, setRoute]);
 
   useEffect(() => {
     return () => {
@@ -360,18 +361,20 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [resetNavigationState]);
 
   const useCurrentLocationAsOrigin = useCallback(() => {
-    if (!currentLocation) {
+    const originLocation = currentLocation ?? lastKnownLocation;
+    if (!originLocation) {
       setPendingUseCurrentOrigin(true);
       return;
     }
 
     setPendingUseCurrentOrigin(false);
     setRoute(null);
-    setOrigin(createCurrentLocationPlace(currentLocation.coordinate));
-  }, [currentLocation, setOrigin, setRoute]);
+    setOrigin(createCurrentLocationPlace(originLocation.coordinate));
+  }, [currentLocation, lastKnownLocation, setOrigin, setRoute]);
 
   const startActiveNavigation = useCallback(() => {
-    if (!currentLocation) {
+    const navigationLocation = currentLocation ?? lastKnownLocation;
+    if (!navigationLocation) {
       Alert.alert('GPS non pronto', 'Per avviare la navigazione serve la posizione attuale.');
       return;
     }
@@ -382,7 +385,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     setRecenterRequestId((value) => value + 1);
     startNavigation();
     speak('Navigazione avviata.');
-  }, [currentLocation, resetTutorRuntime, startNavigation]);
+  }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
     resetNavigationState('stop');
@@ -643,12 +646,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
     handleNavigationTickRef.current = handleNavigationTick;
   }, [handleNavigationTick]);
 
+  const visibleUserLocation = currentLocation ?? lastKnownLocation;
   const activeTutorDistanceRemainingKm = tutorStore.activeTutorSegment
     ? Math.max(0, tutorStore.activeTutorSegment.segment_length_km - tutorStore.distanceTravelledKm)
     : 0;
   const activeTutorTimeRemainingMinutes =
-    currentLocation?.speedKmh && currentLocation.speedKmh > 0
-      ? (activeTutorDistanceRemainingKm / currentLocation.speedKmh) * 60
+    visibleUserLocation?.speedKmh && visibleUserLocation.speedKmh > 0
+      ? (activeTutorDistanceRemainingKm / visibleUserLocation.speedKmh) * 60
       : null;
   const visibleTutorSegments = route ? routeTutorMatches.map((match) => match.segment) : [];
   const visibleSpeedLimit =
@@ -662,13 +666,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <MapViewComponent
-        userLocation={currentLocation?.coordinate || null}
+        userLocation={visibleUserLocation?.coordinate || null}
         origin={origin?.location || null}
         route={route}
         tutorSegments={visibleTutorSegments}
         activeTutorSegment={tutorStore.activeTutorSegment}
         destination={destination?.location || null}
-        heading={currentLocation?.heading ?? null}
+        heading={visibleUserLocation?.heading ?? null}
         isNavigating={isNavigating}
         mapType={mapType}
         maneuverCue={maneuverCue}
@@ -758,7 +762,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
             <TutorSafeCard
               segment={tutorStore.activeTutorSegment}
               averageSpeedKmh={tutorStore.averageSpeedKmh}
-              currentSpeedKmh={currentLocation?.speedKmh || null}
+              currentSpeedKmh={visibleUserLocation?.speedKmh || null}
               recommendedSpeedKmh={tutorStore.recommendedSpeedKmh}
               distanceRemainingKm={activeTutorDistanceRemainingKm}
               timeRemainingMinutes={activeTutorTimeRemainingMinutes}
@@ -778,7 +782,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
           />
 
           <SpeedLimitBox
-            currentSpeedKmh={currentLocation?.speedKmh ?? null}
+            currentSpeedKmh={visibleUserLocation?.speedKmh ?? null}
             speedLimitKmh={visibleSpeedLimit}
           />
 
