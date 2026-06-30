@@ -53,6 +53,14 @@ const createCurrentLocationPlace = (coordinate: Coordinate): Place => ({
   location: coordinate,
 });
 
+const isValidLocationData = (location: LocationData | null | undefined): location is LocationData => {
+  return Boolean(
+    location &&
+      Number.isFinite(location.coordinate.latitude) &&
+      Number.isFinite(location.coordinate.longitude)
+  );
+};
+
 export const HomeMapScreen = ({ navigation }: any) => {
   const { currentLocation, lastKnownLocation, requestLocationPermission } = useLocationStore();
   const {
@@ -111,10 +119,24 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const routeRequestIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
+  const storeUserLocation = isValidLocationData(currentLocation)
+    ? currentLocation
+    : isValidLocationData(lastKnownLocation)
+      ? lastKnownLocation
+      : null;
+  const [persistentUserLocation, setPersistentUserLocation] = useState<LocationData | null>(
+    storeUserLocation
+  );
 
   useEffect(() => {
     routeTutorMatchesRef.current = routeTutorMatches;
   }, [routeTutorMatches]);
+
+  useEffect(() => {
+    if (storeUserLocation) {
+      setPersistentUserLocation(storeUserLocation);
+    }
+  }, [storeUserLocation]);
 
   useEffect(() => {
     if (!route) {
@@ -356,6 +378,19 @@ export const HomeMapScreen = ({ navigation }: any) => {
     setRecenterRequestId((value) => value + 1);
   }, [clearNavigationPlan, resetTutorRuntime, setDestination, setOrigin, setRoute, stopNavigation]);
 
+  const logExitSnapshot = useCallback((label: 'BEFORE EXIT' | 'AFTER EXIT') => {
+    const locationState = useLocationStore.getState();
+    const navigationState = useNavigationStore.getState();
+
+    console.log(label, {
+      currentLocation: locationState.currentLocation,
+      lastKnownLocation: locationState.lastKnownLocation,
+      isNavigating: navigationState.isNavigating,
+      route: navigationState.route,
+      destination: navigationState.destination,
+    });
+  }, []);
+
   const cancelPlan = useCallback(() => {
     resetNavigationState('clear');
   }, [resetNavigationState]);
@@ -388,8 +423,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
+    logExitSnapshot('BEFORE EXIT');
     resetNavigationState('stop');
-  }, [resetNavigationState]);
+    setTimeout(() => logExitSnapshot('AFTER EXIT'), 0);
+  }, [logExitSnapshot, resetNavigationState]);
 
   const closeArrivalPrompt = useCallback(() => {
     resetNavigationState('stop');
@@ -646,7 +683,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     handleNavigationTickRef.current = handleNavigationTick;
   }, [handleNavigationTick]);
 
-  const visibleUserLocation = currentLocation ?? lastKnownLocation;
+  const visibleUserLocation = storeUserLocation ?? persistentUserLocation;
   const activeTutorDistanceRemainingKm = tutorStore.activeTutorSegment
     ? Math.max(0, tutorStore.activeTutorSegment.segment_length_km - tutorStore.distanceTravelledKm)
     : 0;

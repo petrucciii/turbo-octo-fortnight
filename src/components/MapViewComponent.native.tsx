@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
@@ -38,8 +38,16 @@ const getCameraCenter = (coordinate: Coordinate, heading: number | null): Coordi
   return projectCoordinate(coordinate, heading, 72);
 };
 
-const getSafeHeading = (heading: number | null): number => {
-  return typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
+const isValidCoordinate = (coordinate: Coordinate | null): coordinate is Coordinate => {
+  return Boolean(
+    coordinate &&
+      Number.isFinite(coordinate.latitude) &&
+      Number.isFinite(coordinate.longitude)
+  );
+};
+
+const getSafeHeading = (heading: number | null, fallback = 0): number => {
+  return typeof heading === 'number' && Number.isFinite(heading) ? heading : fallback;
 };
 
 export const MapViewComponent: React.FC<Props> = ({
@@ -60,18 +68,30 @@ export const MapViewComponent: React.FC<Props> = ({
 }) => {
   const mapRef = useRef<MapView | null>(null);
   const hasCenteredInitialLocationRef = useRef(false);
-  const safeHeading = getSafeHeading(heading);
-  const cameraHeading = typeof heading === 'number' && Number.isFinite(heading) ? safeHeading : null;
+  const [lastRenderableUserLocation, setLastRenderableUserLocation] = useState<Coordinate | null>(
+    isValidCoordinate(userLocation) ? userLocation : null
+  );
+  const [lastRenderableHeading, setLastRenderableHeading] = useState<number | null>(
+    typeof heading === 'number' && Number.isFinite(heading) ? heading : null
+  );
+  const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
+  const safeHeading = getSafeHeading(heading, lastRenderableHeading ?? 0);
+  const cameraHeading = typeof heading === 'number' && Number.isFinite(heading)
+    ? safeHeading
+    : lastRenderableHeading;
   const routeKey = route
     ? `${overlayResetKey}-${route.polyline.length}-${route.distanceKm.toFixed(3)}-${destination?.latitude ?? 'no-dest'}-${destination?.longitude ?? 'no-dest'}`
     : `no-route-${overlayResetKey}`;
+  const userMarkerKey = visibleUserLocation
+    ? `user-marker-${overlayResetKey}-${visibleUserLocation.latitude.toFixed(6)}-${visibleUserLocation.longitude.toFixed(6)}`
+    : `user-marker-empty-${overlayResetKey}`;
 
   const animateToUser = (duration = 700) => {
-    if (!mapRef.current || !userLocation) return;
+    if (!mapRef.current || !visibleUserLocation) return;
 
     mapRef.current.animateCamera(
       {
-        center: getCameraCenter(userLocation, cameraHeading),
+        center: getCameraCenter(visibleUserLocation, cameraHeading),
         pitch: isNavigating ? 58 : 0,
         heading: isNavigating ? safeHeading : 0,
         zoom: isNavigating ? 18 : 15,
@@ -79,6 +99,26 @@ export const MapViewComponent: React.FC<Props> = ({
       { duration }
     );
   };
+
+  useEffect(() => {
+    if (isValidCoordinate(userLocation)) {
+      setLastRenderableUserLocation(userLocation);
+    }
+  }, [userLocation?.latitude, userLocation?.longitude]);
+
+  useEffect(() => {
+    if (typeof heading === 'number' && Number.isFinite(heading)) {
+      setLastRenderableHeading(heading);
+    }
+  }, [heading]);
+
+  useEffect(() => {
+    console.log('MAP USER MARKER', {
+      visibleUserLocation,
+      isNavigating,
+      hasRoute: Boolean(route),
+    });
+  }, [visibleUserLocation, isNavigating, route]);
 
   useEffect(() => {
     if (!mapRef.current || !route || route.polyline.length < 2 || isNavigating) return;
@@ -103,10 +143,10 @@ export const MapViewComponent: React.FC<Props> = ({
   }, [userLocation, heading, isNavigating, followUserLocation]);
 
   useEffect(() => {
-    if (hasCenteredInitialLocationRef.current || !userLocation || route) return;
+    if (hasCenteredInitialLocationRef.current || !visibleUserLocation || route) return;
     hasCenteredInitialLocationRef.current = true;
     animateToUser(650);
-  }, [userLocation, route]);
+  }, [visibleUserLocation, route]);
 
   useEffect(() => {
     animateToUser(500);
@@ -121,8 +161,8 @@ export const MapViewComponent: React.FC<Props> = ({
         customMapStyle={customMapStyle}
         mapType={mapType}
         initialRegion={{
-          latitude: userLocation?.latitude || origin?.latitude || 41.9028,
-          longitude: userLocation?.longitude || origin?.longitude || 12.4964,
+          latitude: visibleUserLocation?.latitude || origin?.latitude || 41.9028,
+          longitude: visibleUserLocation?.longitude || origin?.longitude || 12.4964,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
@@ -216,8 +256,13 @@ export const MapViewComponent: React.FC<Props> = ({
           );
         })}
 
-        {userLocation ? (
-          <Marker coordinate={userLocation} anchor={{ x: 0.5, y: 0.5 }} zIndex={1000}>
+        {visibleUserLocation ? (
+          <Marker
+            key={userMarkerKey}
+            coordinate={visibleUserLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={9999}
+          >
             <View style={[styles.userArrowShell, { transform: [{ rotate: `${safeHeading}deg` }] }]}>
               <View style={styles.userArrowHead} />
               <View style={styles.userArrowTail} />

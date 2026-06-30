@@ -66,6 +66,14 @@ const getRouteArrowHtml = (heading: number): string => {
   "></div>`;
 };
 
+const isValidCoordinate = (coordinate: Coordinate | null): coordinate is Coordinate => {
+  return Boolean(
+    coordinate &&
+      Number.isFinite(coordinate.latitude) &&
+      Number.isFinite(coordinate.longitude)
+  );
+};
+
 export const MapViewComponent: React.FC<Props> = ({
   userLocation,
   origin,
@@ -95,12 +103,21 @@ export const MapViewComponent: React.FC<Props> = ({
   const isNavigatingRef = useRef(isNavigating);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [LLib, setLLib] = useState<any>(null);
+  const [lastRenderableUserLocation, setLastRenderableUserLocation] = useState<Coordinate | null>(
+    isValidCoordinate(userLocation) ? userLocation : null
+  );
+  const [lastRenderableHeading, setLastRenderableHeading] = useState<number | null>(
+    typeof heading === 'number' && Number.isFinite(heading) ? heading : null
+  );
+  const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
+  const visibleHeading = typeof heading === 'number' && Number.isFinite(heading)
+    ? heading
+    : lastRenderableHeading;
 
   const centerOnUser = (animate = true) => {
-    if (!mapInstanceRef.current || !userLocation) return;
+    if (!mapInstanceRef.current || !visibleUserLocation) return;
     const map = mapInstanceRef.current;
-    const safeHeading = typeof heading === 'number' && Number.isFinite(heading) ? heading : null;
-    const center = safeHeading !== null ? projectCoordinate(userLocation, safeHeading, 62) : userLocation;
+    const center = visibleHeading !== null ? projectCoordinate(visibleUserLocation, visibleHeading, 62) : visibleUserLocation;
     map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
       animate,
     });
@@ -140,6 +157,26 @@ export const MapViewComponent: React.FC<Props> = ({
   }, [isNavigating]);
 
   useEffect(() => {
+    if (isValidCoordinate(userLocation)) {
+      setLastRenderableUserLocation(userLocation);
+    }
+  }, [userLocation?.latitude, userLocation?.longitude]);
+
+  useEffect(() => {
+    if (typeof heading === 'number' && Number.isFinite(heading)) {
+      setLastRenderableHeading(heading);
+    }
+  }, [heading]);
+
+  useEffect(() => {
+    console.log('MAP USER MARKER', {
+      visibleUserLocation,
+      isNavigating,
+      hasRoute: Boolean(route),
+    });
+  }, [visibleUserLocation, isNavigating, route]);
+
+  useEffect(() => {
     const loadLeaflet = async () => {
       if (!document.getElementById('leaflet-css')) {
         const link = document.createElement('link');
@@ -171,8 +208,8 @@ export const MapViewComponent: React.FC<Props> = ({
   useEffect(() => {
     if (!leafletLoaded || !LLib || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    const defaultLat = userLocation?.latitude || origin?.latitude || 41.9028;
-    const defaultLng = userLocation?.longitude || origin?.longitude || 12.4964;
+    const defaultLat = visibleUserLocation?.latitude || origin?.latitude || 41.9028;
+    const defaultLng = visibleUserLocation?.longitude || origin?.longitude || 12.4964;
 
     const map = LLib.map(mapContainerRef.current, {
       zoomControl: false,
@@ -235,21 +272,21 @@ export const MapViewComponent: React.FC<Props> = ({
   }, [mapType, LLib]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib || !userLocation) return;
+    if (!mapInstanceRef.current || !LLib || !visibleUserLocation) return;
 
     const map = mapInstanceRef.current;
     const icon = LLib.divIcon({
       className: '',
-      html: getUserArrowHtml(heading),
+      html: getUserArrowHtml(visibleHeading),
       iconSize: [30, 30],
       iconAnchor: [15, 15],
     });
 
     if (userMarkerRef.current) {
-      userMarkerRef.current.setLatLng([userLocation.latitude, userLocation.longitude]);
+      userMarkerRef.current.setLatLng([visibleUserLocation.latitude, visibleUserLocation.longitude]);
       userMarkerRef.current.setIcon(icon);
     } else {
-      userMarkerRef.current = LLib.marker([userLocation.latitude, userLocation.longitude], {
+      userMarkerRef.current = LLib.marker([visibleUserLocation.latitude, visibleUserLocation.longitude], {
         icon,
         zIndexOffset: 1000,
       }).addTo(map);
@@ -258,9 +295,9 @@ export const MapViewComponent: React.FC<Props> = ({
     if (isNavigating && followUserLocation) {
       centerOnUser(true);
     } else if (!route) {
-      map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), { animate: true });
+      map.setView([visibleUserLocation.latitude, visibleUserLocation.longitude], map.getZoom(), { animate: true });
     }
-  }, [userLocation, heading, isNavigating, followUserLocation, route, LLib]);
+  }, [visibleUserLocation, visibleHeading, isNavigating, followUserLocation, route, LLib]);
 
   useEffect(() => {
     centerOnUser(true);
