@@ -55,6 +55,28 @@ const getSafeHeading = (heading: number | null, fallback = 0): number => {
   return typeof heading === 'number' && Number.isFinite(heading) ? heading : fallback;
 };
 
+const UserLocationLayer = React.memo(
+  ({
+    coordinate,
+    heading,
+    isNavigating,
+  }: {
+    coordinate: Coordinate;
+    heading: number;
+    isNavigating: boolean;
+  }) => (
+    <Marker
+      identifier="permanent-user-location-marker"
+      coordinate={coordinate}
+      anchor={{ x: 0.5, y: 0.5 }}
+      zIndex={9999}
+      tracksViewChanges
+    >
+      <UserPositionArrow heading={heading} isNavigating={isNavigating} />
+    </Marker>
+  )
+);
+
 export const MapViewComponent: React.FC<Props> = ({
   userLocation,
   origin,
@@ -169,6 +191,15 @@ export const MapViewComponent: React.FC<Props> = ({
           if (isNavigating) onUserGesture();
         }}
       >
+        {visibleUserLocation ? (
+          <UserLocationLayer
+            key="permanent-user-location-layer"
+            coordinate={visibleUserLocation}
+            heading={safeHeading}
+            isNavigating={isNavigating}
+          />
+        ) : null}
+
         {route ? (
           <React.Fragment key={routeKey}>
             <Polyline
@@ -254,18 +285,6 @@ export const MapViewComponent: React.FC<Props> = ({
           );
         })}
 
-        {visibleUserLocation ? (
-          <Marker
-            coordinate={visibleUserLocation}
-            anchor={{ x: 0.5, y: 0.5 }}
-            zIndex={9999}
-            flat
-            rotation={safeHeading}
-            tracksViewChanges={false}
-          >
-            <UserPositionArrow heading={0} isNavigating={isNavigating} />
-          </Marker>
-        ) : null}
       </MapView>
     </View>
   );
