@@ -381,19 +381,6 @@ export const HomeMapScreen = ({ navigation }: any) => {
     setRecenterRequestId((value) => value + 1);
   }, [clearNavigationPlan, resetTutorRuntime, setDestination, setOrigin, setRoute, stopNavigation]);
 
-  const logExitSnapshot = useCallback((label: 'BEFORE EXIT' | 'AFTER EXIT') => {
-    const locationState = useLocationStore.getState();
-    const navigationState = useNavigationStore.getState();
-
-    console.log(label, {
-      currentLocation: locationState.currentLocation,
-      lastKnownLocation: locationState.lastKnownLocation,
-      isNavigating: navigationState.isNavigating,
-      route: navigationState.route,
-      destination: navigationState.destination,
-    });
-  }, []);
-
   const cancelPlan = useCallback(() => {
     resetNavigationState('clear');
   }, [resetNavigationState]);
@@ -426,10 +413,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
-    logExitSnapshot('BEFORE EXIT');
     resetNavigationState('stop');
-    setTimeout(() => logExitSnapshot('AFTER EXIT'), 0);
-  }, [logExitSnapshot, resetNavigationState]);
+  }, [resetNavigationState]);
 
   const closeArrivalPrompt = useCallback(() => {
     resetNavigationState('stop');
@@ -713,6 +698,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
         origin={origin?.location || null}
         route={route}
         tutorSegments={visibleTutorSegments}
+        tutorMatches={route ? routeTutorMatches : []}
         activeTutorSegment={tutorStore.activeTutorSegment}
         destination={destination?.location || null}
         heading={visibleUserLocation?.heading ?? null}

@@ -2,10 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MapViewComponent } from '../components/MapViewComponent';
 import { NavigationBottomCard } from '../components/NavigationBottomCard';
-import { NavigationInstructionCard } from '../components/NavigationInstructionCard';
 import { NavigationSideControls } from '../components/NavigationSideControls';
 import { SpeedLimitBox } from '../components/SpeedLimitBox';
-import { TutorApproachAlert } from '../components/TutorApproachAlert';
 import { TutorCompletionToast } from '../components/TutorCompletionToast';
 import { TutorSafeCard } from '../components/TutorSafeCard';
 import { DEFAULT_TUTOR_SEGMENTS } from '../data/defaultTutorSegments';
@@ -24,6 +22,9 @@ const DEMO_SEGMENT =
 const DEMO_START: Coordinate = { latitude: 45.4849562, longitude: 12.0346642 };
 const DEMO_TUTOR_START: Coordinate = { latitude: 45.485453, longitude: 12.031735 };
 const DEMO_TUTOR_END: Coordinate = { latitude: 45.488636, longitude: 12.014756 };
+const DEMO_TICK_MS = 180;
+const DEMO_SIM_STEP_SECONDS = 1;
+const DEMO_EXPLANATION_VISIBLE_MS = 4300;
 
 const DEMO_POLYLINE: Coordinate[] = [
   DEMO_START,
@@ -227,6 +228,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
     () => findTutorSegmentsOnRoute(route, [DEMO_SEGMENT as TutorSegment])[0] ?? null,
     [route]
   );
+  const demoTutorMatches = useMemo(() => (tutorMatch ? [tutorMatch] : []), [tutorMatch]);
   const [travelledKm, setTravelledKm] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(true);
@@ -236,10 +238,12 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const [overlayResetKey, setOverlayResetKey] = useState(0);
   const [completionMessage, setCompletionMessage] = useState<string | null>(null);
   const [finalAverageSpeedKmh, setFinalAverageSpeedKmh] = useState<number | null>(null);
+  const [explanationVisible, setExplanationVisible] = useState(true);
   const tutorEntrySecondsRef = useRef<number | null>(null);
   const tutorCompletedRef = useRef(false);
   const hasDemoOverLimitRef = useRef(false);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const explanationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tutorStartKm = tutorMatch?.startDistanceKm ?? 0.7;
   const tutorEndKm = tutorMatch?.endDistanceKm ?? Math.min(route.distanceKm, tutorStartKm + 1.3);
@@ -293,12 +297,13 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
     finalAverageSpeedKmh,
     hasRecoveredAverage,
   });
+  const explanationPhaseKey = `${explanation.title}-${tutorStatus}-${tutorCompletedRef.current ? 'done' : 'run'}`;
 
   useEffect(() => {
     if (!isRunning) return undefined;
 
     const interval = setInterval(() => {
-      setElapsedSeconds((seconds) => seconds + 3);
+      setElapsedSeconds((seconds) => seconds + DEMO_SIM_STEP_SECONDS);
       setTravelledKm((distance) => {
         const speed = getDemoSpeedKmh(
           distance,
@@ -307,12 +312,29 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
           recommendedSpeedKmh,
           tutorStatus
         );
-        return Math.min(route.distanceKm, distance + (speed * 3) / 3600);
+        return Math.min(route.distanceKm, distance + (speed * DEMO_SIM_STEP_SECONDS) / 3600);
       });
-    }, 650);
+    }, DEMO_TICK_MS);
 
     return () => clearInterval(interval);
   }, [isRunning, recommendedSpeedKmh, route.distanceKm, tutorEndKm, tutorStartKm, tutorStatus]);
+
+  useEffect(() => {
+    setExplanationVisible(true);
+    if (explanationTimerRef.current) {
+      clearTimeout(explanationTimerRef.current);
+    }
+    explanationTimerRef.current = setTimeout(
+      () => setExplanationVisible(false),
+      DEMO_EXPLANATION_VISIBLE_MS
+    );
+
+    return () => {
+      if (explanationTimerRef.current) {
+        clearTimeout(explanationTimerRef.current);
+      }
+    };
+  }, [explanationPhaseKey]);
 
   useEffect(() => {
     if (isTutorActive && tutorStatus === 'over_limit') {
@@ -322,7 +344,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     if (isTutorActive && tutorEntrySecondsRef.current === null) {
-      tutorEntrySecondsRef.current = Math.max(0, elapsedSeconds - 3);
+      tutorEntrySecondsRef.current = Math.max(0, elapsedSeconds - DEMO_SIM_STEP_SECONDS);
       setCompletionMessage(null);
     }
 
@@ -348,6 +370,9 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
       }
+      if (explanationTimerRef.current) {
+        clearTimeout(explanationTimerRef.current);
+      }
     };
   }, []);
 
@@ -357,6 +382,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
     hasDemoOverLimitRef.current = false;
     setCompletionMessage(null);
     setFinalAverageSpeedKmh(null);
+    setExplanationVisible(true);
     setElapsedSeconds(0);
     setTravelledKm(0);
     setIsRunning(true);
@@ -372,6 +398,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
         origin={route.polyline[0]}
         route={route}
         tutorSegments={tutorMatch ? [DEMO_SEGMENT] : []}
+        tutorMatches={demoTutorMatches}
         activeTutorSegment={isTutorActive ? DEMO_SEGMENT : null}
         destination={route.polyline[route.polyline.length - 1]}
         heading={userPose.heading}
@@ -391,30 +418,19 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <NavigationInstructionCard
-        instruction={progress?.currentInstruction ?? null}
-        nextInstruction={progress?.nextInstruction ?? null}
-        currentRoadName={progress?.currentRoadName ?? 'Cavin Caselle'}
-        distanceToManeuverKm={progress?.instructionDistanceRemainingKm ?? null}
-        isOffRoute={false}
-        isRerouting={false}
-      />
-
-      {tutorMatch && !isTutorActive && !tutorCompletedRef.current && tutorApproachKm <= 1 ? (
-        <TutorApproachAlert segment={DEMO_SEGMENT} distanceKm={tutorApproachKm} />
+      {explanationVisible ? (
+        <View
+          style={[
+            styles.explainCard,
+            isTutorActive && styles.explainCardActive,
+            tutorStatus === 'over_limit' && styles.explainCardAlert,
+            hasRecoveredAverage && styles.explainCardRecovered,
+          ]}
+        >
+          <Text style={styles.explainTitle}>{explanation.title}</Text>
+          <Text style={styles.explainBody} numberOfLines={2}>{explanation.body}</Text>
+        </View>
       ) : null}
-
-      <View
-        style={[
-          styles.explainCard,
-          isTutorActive && styles.explainCardActive,
-          tutorStatus === 'over_limit' && styles.explainCardAlert,
-          hasRecoveredAverage && styles.explainCardRecovered,
-        ]}
-      >
-        <Text style={styles.explainTitle}>{explanation.title}</Text>
-        <Text style={styles.explainBody}>{explanation.body}</Text>
-      </View>
 
       {isTutorActive ? (
         <TutorSafeCard
@@ -427,6 +443,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
           status={tutorStatus}
           distanceTravelledKm={tutorDistanceTravelledKm}
           elapsedSeconds={tutorElapsedSeconds}
+          compact
         />
       ) : null}
 
@@ -501,13 +518,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    bottom: 150,
-    borderRadius: 16,
-    backgroundColor: 'rgba(10,18,32,0.84)',
+    bottom: 116,
+    borderRadius: 14,
+    backgroundColor: 'rgba(10,18,32,0.78)',
     borderWidth: 1,
     borderColor: 'rgba(34,211,238,0.22)',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -528,14 +545,14 @@ const styles = StyleSheet.create({
   },
   explainTitle: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
   explainBody: {
     color: '#CBD5E1',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 16,
-    marginTop: 4,
+    lineHeight: 15,
+    marginTop: 3,
   },
 });

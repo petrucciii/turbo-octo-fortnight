@@ -3,8 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
-import { projectCoordinate } from '../utils/motion';
+import { projectCoordinate, smoothHeading } from '../utils/motion';
 import { ManeuverRouteCue } from '../utils/routeArrows';
+import type { RouteTutorMatch } from '../utils/routeProgress';
+import { splitRouteByTutorMatches } from '../utils/routeGeometry';
 import { UserPositionArrow } from './UserPositionArrow';
 import { TutorMapMarker } from './TutorMapMarker';
 
@@ -13,6 +15,7 @@ interface Props {
   origin: Coordinate | null;
   route: RouteInfo | null;
   tutorSegments: TutorSegment[];
+  tutorMatches: RouteTutorMatch[];
   activeTutorSegment: TutorSegment | null;
   destination: Coordinate | null;
   heading: number | null;
@@ -57,6 +60,7 @@ export const MapViewComponent: React.FC<Props> = ({
   origin,
   route,
   tutorSegments,
+  tutorMatches,
   activeTutorSegment,
   destination,
   heading,
@@ -77,17 +81,12 @@ export const MapViewComponent: React.FC<Props> = ({
     typeof heading === 'number' && Number.isFinite(heading) ? heading : null
   );
   const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
-  const safeHeading = getSafeHeading(heading, lastRenderableHeading ?? 0);
-  const cameraHeading = typeof heading === 'number' && Number.isFinite(heading)
-    ? safeHeading
-    : lastRenderableHeading;
+  const safeHeading = getSafeHeading(lastRenderableHeading, 0);
+  const cameraHeading = lastRenderableHeading;
   const routeKey = route
     ? `${overlayResetKey}-${route.polyline.length}-${route.distanceKm.toFixed(3)}-${destination?.latitude ?? 'no-dest'}-${destination?.longitude ?? 'no-dest'}`
     : `no-route-${overlayResetKey}`;
-  const headingKey = Math.round(safeHeading);
-  const userMarkerKey = visibleUserLocation
-    ? `user-marker-${overlayResetKey}-${visibleUserLocation.latitude.toFixed(6)}-${visibleUserLocation.longitude.toFixed(6)}-${headingKey}`
-    : `user-marker-empty-${overlayResetKey}`;
+  const routeSections = route ? splitRouteByTutorMatches(route.polyline, tutorMatches) : [];
 
   const animateToUser = (duration = 700) => {
     if (!mapRef.current || !visibleUserLocation) return;
@@ -111,17 +110,9 @@ export const MapViewComponent: React.FC<Props> = ({
 
   useEffect(() => {
     if (typeof heading === 'number' && Number.isFinite(heading)) {
-      setLastRenderableHeading(heading);
+      setLastRenderableHeading((previous) => smoothHeading(previous, heading, 0.32));
     }
   }, [heading]);
-
-  useEffect(() => {
-    console.log('MAP USER MARKER', {
-      visibleUserLocation,
-      isNavigating,
-      hasRoute: Boolean(route),
-    });
-  }, [visibleUserLocation, isNavigating, route]);
 
   useEffect(() => {
     if (!mapRef.current || !route || route.polyline.length < 2 || isNavigating) return;
@@ -143,7 +134,7 @@ export const MapViewComponent: React.FC<Props> = ({
   useEffect(() => {
     if (!isNavigating || !followUserLocation) return;
     animateToUser();
-  }, [userLocation, heading, isNavigating, followUserLocation]);
+  }, [visibleUserLocation, safeHeading, isNavigating, followUserLocation]);
 
   useEffect(() => {
     if (hasCenteredInitialLocationRef.current || !visibleUserLocation || route) return;
@@ -187,20 +178,26 @@ export const MapViewComponent: React.FC<Props> = ({
               strokeWidth={9}
               zIndex={1}
             />
-            <Polyline
-              key={`route-main-${routeKey}`}
-              coordinates={route.polyline}
-              strokeColor="#7C3AED"
-              strokeWidth={5}
-              zIndex={2}
-            />
+            {routeSections.map((section) => {
+              const isTutorSection = section.type === 'tutor';
+              const isActiveTutorSection = activeTutorSegment?.id === section.tutorId;
+              return (
+                <Polyline
+                  key={`route-section-${routeKey}-${section.id}`}
+                  coordinates={section.coordinates}
+                  strokeColor={isTutorSection ? (isActiveTutorSection ? '#22D3EE' : '#F97316') : '#7C3AED'}
+                  strokeWidth={isTutorSection ? 6 : 5}
+                  zIndex={isTutorSection ? 3 : 2}
+                />
+              );
+            })}
             {maneuverCue?.section && maneuverCue.section.length > 1 ? (
               <Polyline
                 key={`route-cue-${routeKey}-${maneuverCue.id}`}
                 coordinates={maneuverCue.section}
                 strokeColor="#22D3EE"
-                strokeWidth={7}
-                zIndex={3}
+                strokeWidth={8}
+                zIndex={5}
               />
             ) : null}
             {maneuverCue?.arrow ? (
@@ -208,9 +205,12 @@ export const MapViewComponent: React.FC<Props> = ({
                 key={maneuverCue.arrow.id}
                 coordinate={maneuverCue.arrow.coordinate}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={4}
+                zIndex={8}
               >
-                <View style={[styles.routeArrow, { transform: [{ rotate: `${maneuverCue.arrow.heading}deg` }] }]} />
+                <View style={[styles.routeArrowShell, { transform: [{ rotate: `${maneuverCue.arrow.heading}deg` }] }]}>
+                  <View style={styles.routeArrowHead} />
+                  <View style={styles.routeArrowStem} />
+                </View>
               </Marker>
             ) : null}
           </React.Fragment>
@@ -231,13 +231,6 @@ export const MapViewComponent: React.FC<Props> = ({
 
           return (
             <React.Fragment key={`${overlayResetKey}-${segment.id}`}>
-              <Polyline
-                key={`tutor-line-${overlayResetKey}-${segment.id}`}
-                coordinates={[start, end]}
-                strokeColor={isActive ? '#22D3EE' : '#F97316'}
-                strokeWidth={isActive ? 8 : 6}
-                zIndex={4}
-              />
               <Marker
                 coordinate={start}
                 title={`Inizio Tutor ${segment.highway_name}`}
@@ -262,14 +255,14 @@ export const MapViewComponent: React.FC<Props> = ({
 
         {visibleUserLocation ? (
           <Marker
-            key={userMarkerKey}
             coordinate={visibleUserLocation}
             anchor={{ x: 0.5, y: 0.5 }}
             zIndex={9999}
             flat
-            tracksViewChanges
+            rotation={safeHeading}
+            tracksViewChanges={false}
           >
-            <UserPositionArrow heading={safeHeading} />
+            <UserPositionArrow heading={0} isNavigating={isNavigating} />
           </Marker>
         ) : null}
       </MapView>
@@ -292,14 +285,34 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  routeArrow: {
+  routeArrowShell: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#020617',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.32,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  routeArrowHead: {
     width: 0,
     height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 17,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderBottomWidth: 20,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: '#22D3EE',
+  },
+  routeArrowStem: {
+    width: 8,
+    height: 8,
+    marginTop: -3,
+    borderRadius: 4,
+    backgroundColor: '#0891B2',
+    borderWidth: 1,
+    borderColor: 'rgba(240,249,255,0.85)',
   },
 });

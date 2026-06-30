@@ -13,6 +13,7 @@ interface Props {
   status: TutorStatus;
   distanceTravelledKm?: number;
   elapsedSeconds?: number | null;
+  compact?: boolean;
 }
 
 const getStatusText = (status: TutorStatus): string => {
@@ -32,6 +33,7 @@ export const TutorSafeCard: React.FC<Props> = ({
   status,
   distanceTravelledKm,
   elapsedSeconds,
+  compact = false,
 }) => {
   const isOverLimit = status === 'over_limit';
   const isWarning = status === 'warning';
@@ -51,11 +53,11 @@ export const TutorSafeCard: React.FC<Props> = ({
       : null;
 
   return (
-    <View style={[styles.container, isOverLimit && styles.containerAlert, isWarning && styles.containerWarning]}>
+    <View style={[styles.container, compact && styles.containerCompact, isOverLimit && styles.containerAlert, isWarning && styles.containerWarning]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.kicker}>Tutor attivo</Text>
-          <Text style={styles.title} numberOfLines={2}>{segment.name}</Text>
+          {!compact ? <Text style={styles.title} numberOfLines={2}>{segment.name}</Text> : null}
         </View>
         <View style={[styles.statusPill, isOverLimit && styles.statusPillAlert, isWarning && styles.statusPillWarning]}>
           <Text style={styles.statusText}>{getStatusText(status)}</Text>
@@ -79,13 +81,13 @@ export const TutorSafeCard: React.FC<Props> = ({
           <Text style={styles.metricValue}>{formatDistance(distanceRemainingKm)}</Text>
           <Text style={styles.metricLabel}>Fine</Text>
         </View>
-        {typeof distanceTravelledKm === 'number' ? (
+        {!compact && typeof distanceTravelledKm === 'number' ? (
           <View style={styles.metric}>
             <Text style={styles.metricValue}>{formatDistance(distanceTravelledKm)}</Text>
             <Text style={styles.metricLabel}>Percorsi</Text>
           </View>
         ) : null}
-        {elapsedLabel ? (
+        {!compact && elapsedLabel ? (
           <View style={styles.metric}>
             <Text style={styles.metricValue}>{elapsedLabel}</Text>
             <Text style={styles.metricLabel}>Tempo</Text>
@@ -127,6 +129,13 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 14,
     zIndex: 100,
+  },
+  containerCompact: {
+    top: 86,
+    left: 16,
+    right: 16,
+    padding: 10,
+    borderRadius: 14,
   },
   containerAlert: {
     borderColor: '#FB503B',
