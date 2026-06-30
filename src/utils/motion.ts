@@ -58,6 +58,24 @@ export const getFallbackSpeedKmh = (
   return speedKmh;
 };
 
+export const sanitizeSpeedKmh = (speedKmh: number | null | undefined): number | null => {
+  if (speedKmh === null || speedKmh === undefined || Number.isNaN(speedKmh)) return null;
+  if (!Number.isFinite(speedKmh) || speedKmh < 2 || speedKmh > 220) return null;
+  return speedKmh;
+};
+
+export const smoothSpeedKmh = (
+  previousSpeedKmh: number | null,
+  nextSpeedKmh: number | null,
+  smoothing = 0.35
+): number | null => {
+  const sanitizedNext = sanitizeSpeedKmh(nextSpeedKmh);
+  if (sanitizedNext === null) return null;
+  if (previousSpeedKmh === null || Number.isNaN(previousSpeedKmh)) return sanitizedNext;
+
+  return previousSpeedKmh + (sanitizedNext - previousSpeedKmh) * smoothing;
+};
+
 export const projectCoordinate = (
   coordinate: Coordinate,
   bearingDegrees: number,

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { RouteInfo, Coordinate } from '../types/navigation';
+import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { projectCoordinate } from '../utils/motion';
+import { getRouteDirectionArrows } from '../utils/routeArrows';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -14,6 +15,7 @@ interface Props {
   destination: Coordinate | null;
   heading: number | null;
   isNavigating: boolean;
+  mapType: MapDisplayType;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
@@ -43,6 +45,7 @@ export const MapViewComponent: React.FC<Props> = ({
   destination,
   heading,
   isNavigating,
+  mapType,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
@@ -96,7 +99,7 @@ export const MapViewComponent: React.FC<Props> = ({
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         customMapStyle={customMapStyle}
-        mapType={isNavigating ? 'hybrid' : 'standard'}
+        mapType={mapType}
         initialRegion={{
           latitude: userLocation?.latitude || origin?.latitude || 41.9028,
           longitude: userLocation?.longitude || origin?.longitude || 12.4964,
@@ -116,16 +119,26 @@ export const MapViewComponent: React.FC<Props> = ({
           <>
             <Polyline
               coordinates={route.polyline}
-              strokeColor="#ffffff"
-              strokeWidth={11}
+              strokeColor="rgba(255,255,255,0.92)"
+              strokeWidth={9}
               zIndex={1}
             />
             <Polyline
               coordinates={route.polyline}
-              strokeColor="#1b2cff"
-              strokeWidth={7}
+              strokeColor="#7C3AED"
+              strokeWidth={5}
               zIndex={2}
             />
+            {getRouteDirectionArrows(route, 9).map((arrow) => (
+              <Marker
+                key={arrow.id}
+                coordinate={arrow.coordinate}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={3}
+              >
+                <View style={[styles.routeArrow, { transform: [{ rotate: `${arrow.heading}deg` }] }]} />
+              </Marker>
+            ))}
           </>
         ) : null}
 
@@ -173,12 +186,8 @@ export const MapViewComponent: React.FC<Props> = ({
 
         {userLocation ? (
           <Marker coordinate={userLocation} anchor={{ x: 0.5, y: 0.5 }} zIndex={1000}>
-            <View style={[styles.vehicleMarker, { transform: [{ rotate: `${heading ?? 0}deg` }] }]}>
-              <View style={styles.vehicleArrow} />
-              <View style={styles.vehicleBody}>
-                <View style={styles.vehicleWindow} />
-                <View style={styles.vehicleTail} />
-              </View>
+            <View style={[styles.userArrowShell, { transform: [{ rotate: `${heading ?? 0}deg` }] }]}>
+              <View style={styles.userArrow} />
             </View>
           </Marker>
         ) : null}
@@ -202,49 +211,39 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  vehicleMarker: {
-    width: 42,
-    height: 52,
+  userArrowShell: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(17,24,39,0.72)',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 8,
+    justifyContent: 'center',
   },
-  vehicleArrow: {
+  userArrow: {
     width: 0,
     height: 0,
     borderLeftWidth: 9,
     borderRightWidth: 9,
-    borderBottomWidth: 18,
+    borderBottomWidth: 22,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#2f6fff',
-    marginBottom: -2,
+    borderBottomColor: '#38BDF8',
+    transform: [{ translateY: -2 }],
   },
-  vehicleBody: {
-    width: 32,
-    height: 34,
-    borderRadius: 9,
-    backgroundColor: '#f8fbff',
-    borderWidth: 3,
-    borderColor: '#2f6fff',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.32,
-    shadowRadius: 4,
-    elevation: 8,
-  },
-  vehicleWindow: {
-    width: 18,
-    height: 10,
-    borderRadius: 4,
-    backgroundColor: '#cfe8ff',
-  },
-  vehicleTail: {
-    width: 20,
-    height: 4,
-    borderRadius: 3,
-    backgroundColor: '#d92d20',
+  routeArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 14,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#F8FAFC',
   },
   tutorLabel: {
     backgroundColor: '#ff8f00',

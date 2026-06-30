@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Coordinate, RouteInfo } from '../types/navigation';
+import { Coordinate, MapDisplayType, RouteInfo } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { projectCoordinate } from '../utils/motion';
+import { getRouteDirectionArrows } from '../utils/routeArrows';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -13,58 +14,47 @@ interface Props {
   destination: Coordinate | null;
   heading: number | null;
   isNavigating: boolean;
+  mapType: MapDisplayType;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
 }
 
-const getVehicleMarkerHtml = (heading: number | null): string => {
+const getUserArrowHtml = (heading: number | null): string => {
   const rotation = heading ?? 0;
   return `<div style="
-    width: 46px;
-    height: 56px;
+    width: 34px;
+    height: 34px;
     position: relative;
     transform: rotate(${rotation}deg);
-    transform-origin: 23px 28px;
+    transform-origin: 17px 17px;
+    border-radius: 17px;
+    background: rgba(17,24,39,.72);
+    box-shadow: 0 3px 10px rgba(0,0,0,.38);
   ">
     <div style="
       position: absolute;
-      left: 14px;
-      top: 0;
+      left: 8px;
+      top: 4px;
       width: 0;
       height: 0;
       border-left: 9px solid transparent;
       border-right: 9px solid transparent;
-      border-bottom: 18px solid #2f6fff;
-      filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
+      border-bottom: 22px solid #38BDF8;
     "></div>
-    <div style="
-      position: absolute;
-      left: 8px;
-      top: 16px;
-      width: 30px;
-      height: 34px;
-      background: #f8fbff;
-      border: 3px solid #2f6fff;
-      border-radius: 9px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.38);
-    ">
-      <div style="
-        width: 16px;
-        height: 9px;
-        margin: 4px auto 8px;
-        border-radius: 4px;
-        background: #cfe8ff;
-      "></div>
-      <div style="
-        width: 18px;
-        height: 4px;
-        margin: 0 auto;
-        border-radius: 3px;
-        background: #d92d20;
-      "></div>
-    </div>
   </div>`;
+};
+
+const getRouteArrowHtml = (heading: number): string => {
+  return `<div style="
+    width: 0;
+    height: 0;
+    transform: rotate(${heading}deg);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 14px solid #F8FAFC;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
+  "></div>`;
 };
 
 export const MapViewComponent: React.FC<Props> = ({
@@ -76,6 +66,7 @@ export const MapViewComponent: React.FC<Props> = ({
   destination,
   heading,
   isNavigating,
+  mapType,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
@@ -83,9 +74,13 @@ export const MapViewComponent: React.FC<Props> = ({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const routeArrowMarkersRef = useRef<any[]>([]);
   const routeLayerRef = useRef<any>(null);
   const routeOutlineLayerRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
+  const baseLayerRef = useRef<any>(null);
+  const labelLayerRef = useRef<any>(null);
+  const isNavigatingRef = useRef(isNavigating);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [LLib, setLLib] = useState<any>(null);
 
@@ -97,6 +92,10 @@ export const MapViewComponent: React.FC<Props> = ({
       animate,
     });
   };
+
+  useEffect(() => {
+    isNavigatingRef.current = isNavigating;
+  }, [isNavigating]);
 
   useEffect(() => {
     const loadLeaflet = async () => {
@@ -137,24 +136,8 @@ export const MapViewComponent: React.FC<Props> = ({
       zoomControl: false,
     }).setView([defaultLat, defaultLng], 15);
 
-    LLib.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles &copy; Esri',
-        maxZoom: 20,
-      }
-    ).addTo(map);
-    LLib.tileLayer(
-      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: '',
-        maxZoom: 20,
-        opacity: 0.7,
-      }
-    ).addTo(map);
-
     map.on('dragstart zoomstart', () => {
-      if (isNavigating) onUserGesture();
+      if (isNavigatingRef.current) onUserGesture();
     });
 
     LLib.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -166,7 +149,48 @@ export const MapViewComponent: React.FC<Props> = ({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [leafletLoaded, LLib, origin, userLocation, isNavigating, onUserGesture]);
+  }, [leafletLoaded, LLib, onUserGesture]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !LLib) return;
+    const map = mapInstanceRef.current;
+
+    if (baseLayerRef.current) {
+      map.removeLayer(baseLayerRef.current);
+      baseLayerRef.current = null;
+    }
+    if (labelLayerRef.current) {
+      map.removeLayer(labelLayerRef.current);
+      labelLayerRef.current = null;
+    }
+
+    if (mapType === 'hybrid') {
+      baseLayerRef.current = LLib.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: 'Tiles &copy; Esri',
+          maxZoom: 20,
+        }
+      ).addTo(map);
+      labelLayerRef.current = LLib.tileLayer(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '',
+          maxZoom: 20,
+          opacity: 0.72,
+        }
+      ).addTo(map);
+    } else {
+      baseLayerRef.current = LLib.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        {
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 20,
+        }
+      ).addTo(map);
+    }
+  }, [mapType, LLib]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib || !userLocation) return;
@@ -174,9 +198,9 @@ export const MapViewComponent: React.FC<Props> = ({
     const map = mapInstanceRef.current;
     const icon = LLib.divIcon({
       className: '',
-      html: getVehicleMarkerHtml(heading),
-      iconSize: [46, 56],
-      iconAnchor: [23, 28],
+      html: getUserArrowHtml(heading),
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
     });
 
     if (userMarkerRef.current) {
@@ -212,19 +236,34 @@ export const MapViewComponent: React.FC<Props> = ({
       map.removeLayer(routeOutlineLayerRef.current);
       routeOutlineLayerRef.current = null;
     }
+    routeArrowMarkersRef.current.forEach((marker) => map.removeLayer(marker));
+    routeArrowMarkersRef.current = [];
 
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
       routeOutlineLayerRef.current = LLib.polyline(latlngs, {
         color: '#fff',
-        weight: 11,
-        opacity: 0.95,
+        weight: 9,
+        opacity: 0.92,
       }).addTo(map);
       routeLayerRef.current = LLib.polyline(latlngs, {
-        color: '#1b2cff',
-        weight: 7,
+        color: '#7C3AED',
+        weight: 5,
         opacity: 0.95,
       }).addTo(map);
+      routeArrowMarkersRef.current = getRouteDirectionArrows(route, 9).map((arrow) => {
+        const icon = LLib.divIcon({
+          className: '',
+          html: getRouteArrowHtml(arrow.heading),
+          iconSize: [16, 18],
+          iconAnchor: [8, 9],
+        });
+        return LLib.marker([arrow.coordinate.latitude, arrow.coordinate.longitude], {
+          icon,
+          interactive: false,
+          zIndexOffset: 650,
+        }).addTo(map);
+      });
 
       if (!isNavigating) {
         map.fitBounds(routeLayerRef.current.getBounds(), { padding: [70, 70] });

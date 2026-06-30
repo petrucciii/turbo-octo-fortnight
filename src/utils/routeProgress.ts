@@ -4,7 +4,7 @@ import { calculateDistanceBetweenCoordinates } from './geo';
 import { distancePointToSegmentMeters } from './segmentDistance';
 
 const DEFAULT_OFF_ROUTE_THRESHOLD_METERS = 120;
-const ROUTE_TUTOR_MATCH_RADIUS_METERS = 120;
+const ROUTE_TUTOR_MATCH_RADIUS_METERS = 80;
 
 export interface RouteTutorMatch {
   segment: TutorSegment;

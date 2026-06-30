@@ -73,9 +73,6 @@ export const NavigationInstructionCard: React.FC<Props> = ({
             {instruction?.text || 'Indicazione non disponibile'}
           </Text>
         </View>
-        <View style={styles.recenterBadge}>
-          <Text style={styles.recenterIcon}>◆</Text>
-        </View>
       </View>
       <View style={styles.nextBox}>
         <Text style={styles.nextLabel}>Poi</Text>
@@ -89,11 +86,13 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     top: 46,
-    left: 16,
-    right: 16,
-    backgroundColor: '#006b66',
-    borderRadius: 22,
+    left: 14,
+    right: 74,
+    backgroundColor: 'rgba(15,23,42,0.88)',
+    borderRadius: 18,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.24)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28,
@@ -101,29 +100,29 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   warningContainer: {
-    backgroundColor: '#7a4b00',
+    backgroundColor: 'rgba(120,53,15,0.9)',
   },
   mainRow: {
-    minHeight: 104,
+    minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    gap: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
   },
   iconColumn: {
-    width: 78,
+    width: 54,
     alignItems: 'center',
   },
   maneuverIcon: {
-    color: '#fff',
-    fontSize: 50,
+    color: '#38BDF8',
+    fontSize: 34,
     fontWeight: '900',
     lineHeight: 54,
   },
   distanceText: {
-    color: '#fff',
-    fontSize: 22,
+    color: '#F8FAFC',
+    fontSize: 15,
     fontWeight: '900',
     marginTop: 2,
   },
@@ -131,50 +130,37 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    color: '#fff',
-    fontSize: 34,
-    fontWeight: '500',
+    color: '#F8FAFC',
+    fontSize: 21,
+    fontWeight: '800',
   },
   subtitle: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 14,
+    color: '#CBD5E1',
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
   },
-  recenterBadge: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recenterIcon: {
-    color: '#3b82f6',
-    fontSize: 26,
-    fontWeight: '900',
-  },
   nextBox: {
     alignSelf: 'flex-start',
-    maxWidth: '52%',
-    minHeight: 54,
+    maxWidth: '72%',
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#005550',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: 'rgba(124,58,237,0.48)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderBottomRightRadius: 18,
   },
   nextLabel: {
-    color: '#fff',
-    fontSize: 18,
+    color: '#EDE9FE',
+    fontSize: 13,
     fontWeight: '900',
   },
   nextText: {
     flex: 1,
-    color: '#fff',
-    fontSize: 15,
+    color: '#F8FAFC',
+    fontSize: 12,
     fontWeight: '800',
   },
 });

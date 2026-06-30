@@ -1,9 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { StatusBadge } from './StatusBadge';
-import { SpeedBadge } from './SpeedBadge';
 import { TutorStatus, TutorSegment } from '../types/tutor';
-import { formatSpeed, formatDistance, formatDuration } from '../utils/formatting';
+import { formatSpeed, formatDistance } from '../utils/formatting';
 
 interface Props {
   segment: TutorSegment;
@@ -15,8 +13,11 @@ interface Props {
   status: TutorStatus;
 }
 
-const formatCoordinate = (latitude: number, longitude: number): string => {
-  return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+const getStatusText = (status: TutorStatus): string => {
+  if (status === 'over_limit') return 'Media alta';
+  if (status === 'warning') return 'Attenzione';
+  if (status === 'safe') return 'OK';
+  return 'Inattivo';
 };
 
 export const TutorSafeCard: React.FC<Props> = ({
@@ -25,75 +26,47 @@ export const TutorSafeCard: React.FC<Props> = ({
   currentSpeedKmh,
   recommendedSpeedKmh,
   distanceRemainingKm,
-  timeRemainingMinutes,
   status,
 }) => {
-  let borderColor = '#333';
-  if (status === 'safe') borderColor = '#2ecc71';
-  else if (status === 'warning') borderColor = '#f39c12';
-  else if (status === 'over_limit') borderColor = '#e74c3c';
+  const isOverLimit = status === 'over_limit';
 
   return (
-    <View style={[styles.container, { borderColor }]}>
+    <View style={[styles.container, isOverLimit && styles.containerAlert]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>Tutor Safe attivo</Text>
-          <Text style={styles.title}>{segment.highway_name} {segment.name}</Text>
+          <Text style={styles.kicker}>Tutor attivo</Text>
+          <Text style={styles.title} numberOfLines={1}>{segment.name}</Text>
         </View>
-        <Text style={styles.limit}>{segment.speed_limit_kmh}</Text>
+        <View style={[styles.statusPill, isOverLimit && styles.statusPillAlert]}>
+          <Text style={styles.statusText}>{getStatusText(status)}</Text>
+        </View>
       </View>
 
-      <StatusBadge status={status} />
-
-      <View style={styles.speedsContainer}>
-        <SpeedBadge
-          value={formatSpeed(averageSpeedKmh)}
-          label="Media"
-          highlight
-          color={borderColor}
-        />
-        <SpeedBadge
-          value={formatSpeed(currentSpeedKmh)}
-          label="Ora"
-        />
-        <SpeedBadge
-          value={formatSpeed(segment.speed_limit_kmh)}
-          label="Limite"
-        />
-      </View>
-
-      {status === 'over_limit' ? (
-        <View style={styles.warningBox}>
-          <Text style={styles.warningText}>
-            Media attuale {formatSpeed(averageSpeedKmh)} km/h.{' '}
-            {recommendedSpeedKmh
-              ? `Per rientrare mantieni circa ${formatSpeed(recommendedSpeedKmh)} km/h fino alla fine.`
-              : 'Non è più possibile rientrare nella media con la distanza residua.'}
-          </Text>
+      <View style={styles.metrics}>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{segment.speed_limit_kmh}</Text>
+          <Text style={styles.metricLabel}>Limite</Text>
         </View>
-      ) : null}
-
-      <View style={styles.metricsRow}>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{formatSpeed(averageSpeedKmh)}</Text>
+          <Text style={styles.metricLabel}>Media</Text>
+        </View>
+        <View style={styles.metric}>
+          <Text style={styles.metricValue}>{formatSpeed(currentSpeedKmh)}</Text>
+          <Text style={styles.metricLabel}>Ora</Text>
+        </View>
         <View style={styles.metric}>
           <Text style={styles.metricValue}>{formatDistance(distanceRemainingKm)}</Text>
-          <Text style={styles.metricLabel}>Alla fine</Text>
-        </View>
-        <View style={styles.metric}>
-          <Text style={styles.metricValue}>
-            {timeRemainingMinutes !== null ? formatDuration(timeRemainingMinutes * 60) : '--:--'}
-          </Text>
-          <Text style={styles.metricLabel}>Tempo Tutor</Text>
+          <Text style={styles.metricLabel}>Fine</Text>
         </View>
       </View>
 
-      <View style={styles.points}>
-        <Text style={styles.pointText}>
-          Ingresso: {formatCoordinate(segment.start_latitude, segment.start_longitude)}
+      {isOverLimit ? (
+        <Text style={styles.warningText}>
+          Rallenta in sicurezza
+          {recommendedSpeedKmh ? ` · target ${formatSpeed(recommendedSpeedKmh)} km/h` : ''}
         </Text>
-        <Text style={styles.pointText}>
-          Uscita: {formatCoordinate(segment.end_latitude, segment.end_longitude)}
-        </Text>
-      </View>
+      ) : null}
     </View>
   );
 };
@@ -101,97 +74,79 @@ export const TutorSafeCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 214,
-    left: 16,
-    right: 16,
-    backgroundColor: '#1c1c1e',
+    top: 146,
+    left: 14,
+    right: 74,
+    backgroundColor: 'rgba(24,24,37,0.92)',
     borderRadius: 16,
-    padding: 14,
-    borderWidth: 2,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251,146,60,0.45)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.26,
     shadowRadius: 10,
     elevation: 14,
     zIndex: 100,
   },
+  containerAlert: {
+    borderColor: '#FB503B',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-    gap: 12,
-  },
-  kicker: {
-    color: '#8e8e93',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    fontWeight: '800',
-    marginBottom: 3,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  limit: {
-    minWidth: 48,
-    textAlign: 'center',
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '900',
-    borderWidth: 3,
-    borderColor: '#e74c3c',
-    borderRadius: 24,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  speedsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 12,
-  },
-  warningBox: {
-    backgroundColor: 'rgba(231, 76, 60, 0.18)',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  warningText: {
-    color: '#ff8a80',
-    fontWeight: '800',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  metricsRow: {
-    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
     marginBottom: 10,
   },
-  metric: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 10,
-    padding: 10,
+  kicker: {
+    color: '#FDBA74',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    fontWeight: '900',
   },
-  metricValue: {
-    color: '#fff',
-    fontSize: 16,
+  title: {
+    color: '#F8FAFC',
+    fontSize: 14,
     fontWeight: '800',
-  },
-  metricLabel: {
-    color: '#8e8e93',
-    fontSize: 12,
     marginTop: 2,
   },
-  points: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-    paddingTop: 10,
-    gap: 4,
+  statusPill: {
+    borderRadius: 12,
+    backgroundColor: 'rgba(34,197,94,0.22)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
-  pointText: {
-    color: '#8e8e93',
+  statusPillAlert: {
+    backgroundColor: 'rgba(251,80,59,0.24)',
+  },
+  statusText: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  metrics: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metric: {
+    flex: 1,
+  },
+  metricValue: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  metricLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  warningText: {
+    color: '#FDBA74',
     fontSize: 12,
+    fontWeight: '800',
+    marginTop: 9,
   },
 });

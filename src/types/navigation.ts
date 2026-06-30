@@ -3,6 +3,8 @@ export interface Coordinate {
   longitude: number;
 }
 
+export type MapDisplayType = 'standard' | 'hybrid';
+
 export interface RoutePoint {
   latitude: number;
   longitude: number;

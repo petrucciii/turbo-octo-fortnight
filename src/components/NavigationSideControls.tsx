@@ -1,20 +1,19 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { MapDisplayType } from '../types/navigation';
 
 interface Props {
   isFollowingUser: boolean;
+  mapType: MapDisplayType;
   onRecenter: () => void;
-  onCompass: () => void;
-  onAudioToggle: () => void;
-  onReport: () => void;
+  onToggleMapType: () => void;
 }
 
 export const NavigationSideControls: React.FC<Props> = ({
   isFollowingUser,
+  mapType,
   onRecenter,
-  onCompass,
-  onAudioToggle,
-  onReport,
+  onToggleMapType,
 }) => {
   return (
     <View style={styles.container}>
@@ -22,16 +21,10 @@ export const NavigationSideControls: React.FC<Props> = ({
         style={[styles.button, !isFollowingUser && styles.buttonActive]}
         onPress={onRecenter}
       >
-        <Text style={[styles.icon, !isFollowingUser && styles.iconActive]}>⌖</Text>
+        <Text style={[styles.primaryIcon, !isFollowingUser && styles.iconActive]}>LOC</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={onCompass}>
-        <Text style={styles.compass}>N</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={onAudioToggle}>
-        <Text style={styles.icon}>AUD</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={onReport}>
-        <Text style={styles.warning}>!</Text>
+      <TouchableOpacity style={styles.button} onPress={onToggleMapType}>
+        <Text style={styles.secondaryIcon}>{mapType === 'hybrid' ? 'SAT' : 'MAP'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -40,17 +33,19 @@ export const NavigationSideControls: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    right: 16,
-    top: 300,
-    gap: 14,
+    right: 14,
+    top: 214,
+    gap: 10,
   },
   button: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#fff',
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.82)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.22,
@@ -58,26 +53,20 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   buttonActive: {
-    backgroundColor: '#e8f0ff',
-    borderWidth: 2,
-    borderColor: '#2f6fff',
+    borderColor: '#38BDF8',
+    backgroundColor: 'rgba(12,74,110,0.92)',
   },
-  icon: {
-    color: '#1f2933',
-    fontSize: 18,
+  primaryIcon: {
+    color: '#E5E7EB',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  secondaryIcon: {
+    color: '#F8FAFC',
+    fontSize: 11,
     fontWeight: '900',
   },
   iconActive: {
-    color: '#2f6fff',
-  },
-  compass: {
-    color: '#d92d20',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  warning: {
-    color: '#b7791f',
-    fontSize: 28,
-    fontWeight: '900',
+    color: '#E0F2FE',
   },
 });

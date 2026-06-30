@@ -30,7 +30,6 @@ export const NavigationBottomCard: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
-      <View style={styles.handle} />
       <View style={styles.row}>
         <View style={styles.summary}>
           <Text style={styles.duration}>{formatNavigationDuration(durationRemainingMinutes)}</Text>
@@ -38,9 +37,6 @@ export const NavigationBottomCard: React.FC<Props> = ({
             {formatDistance(distanceRemainingKm)} · {etaString}
           </Text>
         </View>
-        <TouchableOpacity style={styles.optionsButton}>
-          <Text style={styles.optionsIcon}>⇄</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.exitButton} onPress={onStop}>
           <Text style={styles.exitText}>Esci</Text>
         </TouchableOpacity>
@@ -52,72 +48,51 @@ export const NavigationBottomCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    paddingBottom: 28,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    bottom: 18,
+    left: 14,
+    right: 14,
+    backgroundColor: 'rgba(15,23,42,0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
     elevation: 20,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 58,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#d0d0d0',
-    marginBottom: 10,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    gap: 12,
   },
   summary: {
     flex: 1,
   },
   duration: {
-    color: '#24823d',
-    fontSize: 42,
+    color: '#A7F3D0',
+    fontSize: 26,
     fontWeight: '800',
   },
   details: {
-    color: '#5f6368',
-    fontSize: 21,
+    color: '#CBD5E1',
+    fontSize: 15,
     fontWeight: '500',
-    marginTop: 2,
-  },
-  optionsButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#f1f3f4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionsIcon: {
-    color: '#222',
-    fontSize: 30,
-    fontWeight: '900',
+    marginTop: 1,
   },
   exitButton: {
-    width: 92,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#e0312d',
+    minWidth: 68,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#FB503B',
     alignItems: 'center',
     justifyContent: 'center',
   },
   exitText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: '900',
   },
 });

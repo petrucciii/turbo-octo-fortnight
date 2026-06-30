@@ -1,5 +1,5 @@
 export const formatSpeed = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || isNaN(value)) return '--';
+  if (value === null || value === undefined || isNaN(value) || value < 2) return '–';
   return Math.round(value).toString();
 };
 

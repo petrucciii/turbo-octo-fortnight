@@ -19,7 +19,7 @@ import { getDirections } from '../api/googleDirections';
 import { isNearPoint, calculateDistanceBetweenCoordinates } from '../utils/geo';
 import { calculateAverageSpeed, calculateRecommendedSpeed, getTutorStatus } from '../utils/tutorCalculations';
 import { speak } from '../utils/speech';
-import { Coordinate, Place, RouteProgress } from '../types/navigation';
+import { Coordinate, MapDisplayType, Place, RouteProgress } from '../types/navigation';
 import { LocationData } from '../types/location';
 import {
   RouteTutorMatch,
@@ -30,7 +30,9 @@ import {
 import {
   calculateBearing,
   getFallbackSpeedKmh,
+  sanitizeSpeedKmh,
   smoothHeading,
+  smoothSpeedKmh,
 } from '../utils/motion';
 import { distancePointToSegmentMeters } from '../utils/segmentDistance';
 
@@ -76,6 +78,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [isRerouting, setIsRerouting] = useState(false);
   const [isFollowingUser, setIsFollowingUser] = useState(false);
+  const [mapType, setMapType] = useState<MapDisplayType>('hybrid');
   const [recenterRequestId, setRecenterRequestId] = useState(0);
   const [pendingUseCurrentOrigin, setPendingUseCurrentOrigin] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -88,6 +91,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   } | null>(null);
 
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const routeTutorMatchesRef = useRef<RouteTutorMatch[]>([]);
   const activeTutorMatchRef = useRef<RouteTutorMatch | null>(null);
   const warnedTutorIdsRef = useRef<Set<string>>(new Set());
@@ -97,6 +101,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const isReroutingRef = useRef(false);
   const lastMotionSampleRef = useRef<{ coordinate: Coordinate; timestamp: number } | null>(null);
   const lastStableHeadingRef = useRef<number | null>(null);
+  const lastStableSpeedRef = useRef<number | null>(null);
+  const deviceHeadingRef = useRef<number | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
 
@@ -148,6 +154,40 @@ export const HomeMapScreen = ({ navigation }: any) => {
         return;
       }
 
+      try {
+        const headingSub = await Location.watchHeadingAsync((heading) => {
+          const rawHeading =
+            typeof heading.trueHeading === 'number' && heading.trueHeading >= 0
+              ? heading.trueHeading
+              : heading.magHeading;
+          const stableHeading = smoothHeading(lastStableHeadingRef.current, rawHeading, 0.18);
+          if (stableHeading === null) return;
+
+          deviceHeadingRef.current = stableHeading;
+          lastStableHeadingRef.current = stableHeading;
+
+          const locationState = useLocationStore.getState().currentLocation;
+          const currentSpeed = sanitizeSpeedKmh(locationState?.speedKmh);
+          if (locationState && currentSpeed === null) {
+            const updatedLocation: LocationData = {
+              ...locationState,
+              heading: stableHeading,
+              timestamp: Date.now(),
+            };
+            useLocationStore.getState().setCurrentLocation(updatedLocation);
+            handleNavigationTickRef.current(updatedLocation);
+          }
+        });
+
+        if (isMounted) {
+          headingSubscriptionRef.current = headingSub;
+        } else {
+          headingSub.remove();
+        }
+      } catch (error) {
+        console.warn('Heading watch unavailable:', error);
+      }
+
       const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
@@ -167,19 +207,24 @@ export const HomeMapScreen = ({ navigation }: any) => {
             location.timestamp
           );
           const gpsSpeedKmh = typeof rawSpeed === 'number' && rawSpeed >= 0 ? rawSpeed * 3.6 : null;
-          const fallbackHeading = lastMotionSampleRef.current
+          const candidateSpeed = sanitizeSpeedKmh(gpsSpeedKmh) ?? sanitizeSpeedKmh(fallbackSpeed);
+          const stableSpeed = smoothSpeedKmh(lastStableSpeedRef.current, candidateSpeed);
+          lastStableSpeedRef.current = stableSpeed;
+          const fallbackHeading = lastMotionSampleRef.current && sanitizeSpeedKmh(fallbackSpeed) !== null
             ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
             : null;
           const candidateHeading =
-            typeof rawHeading === 'number' && rawHeading >= 0
-              ? rawHeading
-              : fallbackHeading;
-          const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading);
+            stableSpeed !== null && stableSpeed >= 4
+              ? typeof rawHeading === 'number' && rawHeading >= 0
+                ? rawHeading
+                : fallbackHeading
+              : deviceHeadingRef.current ?? fallbackHeading;
+          const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading, 0.2);
           lastStableHeadingRef.current = stableHeading;
 
           const locData: LocationData = {
             coordinate,
-            speedKmh: gpsSpeedKmh ?? fallbackSpeed,
+            speedKmh: stableSpeed,
             heading: stableHeading,
             timestamp: location.timestamp,
             accuracy: location.coords.accuracy,
@@ -203,6 +248,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     return () => {
       isMounted = false;
       locationSubscriptionRef.current?.remove();
+      headingSubscriptionRef.current?.remove();
     };
   }, [requestLocationPermission]);
 
@@ -246,15 +292,29 @@ export const HomeMapScreen = ({ navigation }: any) => {
     tutorStore.reset();
   }, [tutorStore]);
 
-  const cancelPlan = useCallback(() => {
-    clearNavigationPlan();
-    setDestination(null);
+  const resetNavigationState = useCallback((mode: 'stop' | 'clear') => {
+    if (mode === 'stop') {
+      stopNavigation();
+    } else {
+      clearNavigationPlan();
+      setDestination(null);
+    }
+
+    setIsFollowingUser(false);
+    setIsRerouting(false);
+    setIsCalculatingRoute(false);
+    setPendingUseCurrentOrigin(false);
     setRouteTutorMatches([]);
     setCurrentRouteProgress(null);
     setRouteError(null);
-    setPendingUseCurrentOrigin(false);
+    setTutorCompletionMessage(null);
+    isReroutingRef.current = false;
     resetTutorRuntime();
-  }, [clearNavigationPlan, resetTutorRuntime, setDestination]);
+  }, [clearNavigationPlan, resetTutorRuntime, setDestination, stopNavigation]);
+
+  const cancelPlan = useCallback(() => {
+    resetNavigationState('clear');
+  }, [resetNavigationState]);
 
   const useCurrentLocationAsOrigin = useCallback(() => {
     if (!currentLocation) {
@@ -281,17 +341,20 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
-    stopNavigation();
-    setIsFollowingUser(false);
-    setCurrentRouteProgress(null);
-    setRouteTutorMatches([]);
-    setRouteError(null);
-    resetTutorRuntime();
-  }, [resetTutorRuntime, stopNavigation]);
+    resetNavigationState('stop');
+  }, [resetNavigationState]);
 
   const recenterOnUser = useCallback(() => {
     setIsFollowingUser(true);
     setRecenterRequestId((value) => value + 1);
+  }, []);
+
+  const toggleMapType = useCallback(() => {
+    setMapType((current) => (current === 'hybrid' ? 'standard' : 'hybrid'));
+  }, []);
+
+  const handleMapGesture = useCallback(() => {
+    setIsFollowingUser(false);
   }, []);
 
   const rerouteFromCurrentLocation = useCallback(async (coordinate: Coordinate) => {
@@ -549,9 +612,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
         destination={destination?.location || null}
         heading={currentLocation?.heading ?? null}
         isNavigating={isNavigating}
+        mapType={mapType}
         followUserLocation={isFollowingUser}
         recenterRequestId={recenterRequestId}
-        onUserGesture={() => setIsFollowingUser(false)}
+        onUserGesture={handleMapGesture}
       />
 
       {!isNavigating && !destination ? (
@@ -648,10 +712,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
           <NavigationSideControls
             isFollowingUser={isFollowingUser}
+            mapType={mapType}
             onRecenter={recenterOnUser}
-            onCompass={recenterOnUser}
-            onAudioToggle={() => speak('Audio navigazione attivo.')}
-            onReport={() => speak('Segnalazione non disponibile nel prototipo.')}
+            onToggleMapType={toggleMapType}
           />
 
           <SpeedLimitBox
@@ -677,10 +740,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
       {!isNavigating ? (
         <View style={styles.topRightControls}>
           <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.iconText}>⚙</Text>
+            <Text style={styles.iconText}>SET</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('DemoMode')}>
-            <Text style={styles.iconText}>▶</Text>
+            <Text style={styles.iconText}>DEMO</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -812,7 +875,7 @@ const styles = StyleSheet.create({
   },
   iconText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 11,
     fontWeight: '800',
   },
 });
