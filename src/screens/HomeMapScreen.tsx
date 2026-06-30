@@ -67,6 +67,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     lastKnownLocation,
     heading,
     lastValidHeading,
+    setHeading,
     requestLocationPermission,
   } = useLocationStore();
   const {
@@ -125,24 +126,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const routeRequestIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
-  const storeUserLocation = isValidLocationData(currentLocation)
-    ? currentLocation
-    : isValidLocationData(lastKnownLocation)
-      ? lastKnownLocation
-      : null;
-  const [persistentUserLocation, setPersistentUserLocation] = useState<LocationData | null>(
-    storeUserLocation
-  );
 
   useEffect(() => {
     routeTutorMatchesRef.current = routeTutorMatches;
   }, [routeTutorMatches]);
-
-  useEffect(() => {
-    if (storeUserLocation) {
-      setPersistentUserLocation(storeUserLocation);
-    }
-  }, [storeUserLocation]);
 
   useEffect(() => {
     if (!route) {
@@ -255,6 +242,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
           deviceHeadingRef.current = stableHeading;
           lastStableHeadingRef.current = stableHeading;
+          setHeading(stableHeading);
 
           const locationStoreState = useLocationStore.getState();
           const locationState = locationStoreState.currentLocation ?? locationStoreState.lastKnownLocation;
@@ -307,7 +295,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
       locationSubscriptionRef.current?.remove();
       headingSubscriptionRef.current?.remove();
     };
-  }, [requestLocationPermission]);
+  }, [requestLocationPermission, setHeading]);
 
   useEffect(() => {
     if (!origin || !destination || isNavigating) return;
@@ -419,32 +407,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
-    const beforeLocationState = useLocationStore.getState();
-    const beforeNavigationState = useNavigationStore.getState();
-    console.log('EXIT PRESSED - BEFORE', {
-      currentLocation: beforeLocationState.currentLocation,
-      lastKnownLocation: beforeLocationState.lastKnownLocation,
-      persistentUserLocation,
-      heading: beforeLocationState.heading,
-      lastValidHeading: beforeLocationState.lastValidHeading,
-      isNavigating: beforeNavigationState.isNavigating,
-      hasRoute: !!beforeNavigationState.route,
-    });
-
     resetNavigationOnly('stop');
-
-    const afterLocationState = useLocationStore.getState();
-    const afterNavigationState = useNavigationStore.getState();
-    console.log('EXIT PRESSED - AFTER', {
-      currentLocation: afterLocationState.currentLocation,
-      lastKnownLocation: afterLocationState.lastKnownLocation,
-      persistentUserLocation,
-      heading: afterLocationState.heading,
-      lastValidHeading: afterLocationState.lastValidHeading,
-      isNavigating: afterNavigationState.isNavigating,
-      hasRoute: !!afterNavigationState.route,
-    });
-  }, [persistentUserLocation, resetNavigationOnly]);
+  }, [resetNavigationOnly]);
 
   const closeArrivalPrompt = useCallback(() => {
     resetNavigationOnly('stop');
@@ -703,13 +667,12 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
   const visibleLocationData =
     currentLocation ??
-    lastKnownLocation ??
-    persistentUserLocation;
+    lastKnownLocation;
   const visibleUserCoordinate = visibleLocationData?.coordinate ?? null;
   const safeHeading =
-    visibleLocationData?.heading ??
     heading ??
     lastValidHeading ??
+    visibleLocationData?.heading ??
     0;
   const visibleUserLocation = visibleLocationData;
   const activeTutorDistanceRemainingKm = tutorStore.activeTutorSegment

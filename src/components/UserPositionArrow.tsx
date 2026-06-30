@@ -3,14 +3,14 @@ import { StyleSheet, View } from 'react-native';
 
 interface Props {
   heading: number | null;
-  isNavigating: boolean;
+  isNavigating?: boolean;
 }
 
 const getSafeHeading = (heading: number | null): number => {
   return typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
 };
 
-export const UserPositionArrow: React.FC<Props> = ({ heading, isNavigating }) => {
+export const UserPositionArrow: React.FC<Props> = ({ heading, isNavigating = false }) => {
   const rotation = getSafeHeading(heading);
 
   return (

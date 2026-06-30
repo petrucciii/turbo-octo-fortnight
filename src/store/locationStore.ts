@@ -10,10 +10,15 @@ interface LocationState {
   lastValidHeading: number | null;
   locationPermission: Location.PermissionStatus | null;
   setCurrentLocation: (location: LocationData) => void;
+  setHeading: (heading: number | null) => void;
   setCurrentSpeed: (speedKmh: number | null) => void;
   resetLocation: () => void;
   requestLocationPermission: () => Promise<boolean>;
 }
+
+const getValidHeading = (heading: number | null | undefined): number | null => {
+  return typeof heading === 'number' && Number.isFinite(heading) ? heading : null;
+};
 
 export const useLocationStore = create<LocationState>((set) => ({
   currentLocation: null,
@@ -23,10 +28,8 @@ export const useLocationStore = create<LocationState>((set) => ({
   lastValidHeading: null,
   locationPermission: null,
   setCurrentLocation: (location) => set((state) => {
-    const headingIsValid =
-      typeof location.heading === 'number' &&
-      Number.isFinite(location.heading);
-    const safeHeading = headingIsValid ? location.heading : state.lastValidHeading;
+    const validHeading = getValidHeading(location.heading);
+    const safeHeading = validHeading ?? state.lastValidHeading;
 
     return {
       currentLocation: {
@@ -39,7 +42,22 @@ export const useLocationStore = create<LocationState>((set) => ({
       },
       currentSpeedKmh: location.speedKmh,
       heading: safeHeading,
-      lastValidHeading: headingIsValid ? location.heading : state.lastValidHeading,
+      lastValidHeading: validHeading ?? state.lastValidHeading,
+    };
+  }),
+  setHeading: (heading) => set((state) => {
+    const validHeading = getValidHeading(heading);
+    const safeHeading = validHeading ?? state.lastValidHeading;
+
+    return {
+      heading: safeHeading,
+      lastValidHeading: validHeading ?? state.lastValidHeading,
+      currentLocation: state.currentLocation
+        ? { ...state.currentLocation, heading: safeHeading }
+        : state.currentLocation,
+      lastKnownLocation: state.lastKnownLocation
+        ? { ...state.lastKnownLocation, heading: safeHeading }
+        : state.lastKnownLocation,
     };
   }),
   setCurrentSpeed: (speed) => set({ currentSpeedKmh: speed }),
