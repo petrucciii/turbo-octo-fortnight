@@ -28,50 +28,50 @@ interface Props {
 const getUserArrowHtml = (heading: number | null): string => {
   const rotation = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
   return `<div style="
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     position: relative;
     transform: rotate(${rotation}deg);
-    transform-origin: 16px 16px;
-    filter: drop-shadow(0 2px 5px rgba(2,6,23,.42));
+    transform-origin: 18px 18px;
+    filter: drop-shadow(0 2px 6px rgba(2,6,23,.48));
   ">
     <div style="
       position: absolute;
-      left: 7px;
-      top: 2px;
-      width: 18px;
-      height: 24px;
-      background: rgba(34,211,238,.18);
-      border-radius: 10px;
+      left: 6px;
+      top: 3px;
+      width: 24px;
+      height: 30px;
+      background: rgba(124,58,237,.18);
+      border-radius: 14px;
     "></div>
     <div style="
       position: absolute;
-      left: 7px;
-      top: 2px;
-      width: 18px;
+      left: 6px;
+      top: 1px;
+      width: 24px;
       height: 26px;
-      background: rgba(15,23,42,.9);
-      clip-path: polygon(50% 0%, 92% 78%, 64% 70%, 64% 100%, 36% 100%, 36% 70%, 8% 78%);
+      background: rgba(6,8,24,.94);
+      clip-path: polygon(50% 0%, 100% 100%, 64% 92%, 50% 70%, 36% 92%, 0% 100%);
       border-radius: 8px;
     "></div>
     <div style="
       position: absolute;
       left: 9px;
-      top: 4px;
-      width: 14px;
-      height: 22px;
-      background: linear-gradient(180deg,#67E8F9 0%,#0EA5E9 100%);
-      clip-path: polygon(50% 0%, 88% 82%, 50% 68%, 12% 82%);
+      top: 5px;
+      width: 18px;
+      height: 20px;
+      background: linear-gradient(180deg,#A78BFA 0%,#6D28D9 100%);
+      clip-path: polygon(50% 0%, 90% 100%, 58% 86%, 50% 66%, 42% 86%, 10% 100%);
       border-radius: 8px;
     "></div>
     <div style="
       position:absolute;
-      left:14px;
-      top:15px;
-      width:4px;
-      height:4px;
-      border-radius:2px;
-      background:#E0F2FE;
+      left:15px;
+      top:16px;
+      width:5px;
+      height:5px;
+      border-radius:3px;
+      background:#DDD6FE;
     "></div>
   </div>`;
 };
@@ -88,21 +88,21 @@ const getTutorMarkerHtml = (type: 'start' | 'end', active: boolean): string => {
     display:flex;
     align-items:center;
     gap:6px;
-    height:28px;
-    min-width:100px;
-    padding:0 10px 0 6px;
-    border-radius:14px;
+    height:26px;
+    min-width:94px;
+    padding:0 9px 0 5px;
+    border-radius:13px;
     background:${active ? 'rgba(30,27,75,.92)' : 'rgba(15,23,42,.9)'};
     border:1px solid ${active ? 'rgba(168,85,247,.9)' : 'rgba(251,146,60,.72)'};
     box-shadow:0 2px 7px rgba(2,6,23,.34);
     color:#F8FAFC;
-    font-size:11px;
+    font-size:10px;
     font-weight:900;
     white-space:nowrap;
   ">
     <div style="
-      width:16px;
-      height:16px;
+      width:15px;
+      height:15px;
       border-radius:8px;
       display:flex;
       align-items:center;
@@ -116,31 +116,41 @@ const getTutorMarkerHtml = (type: 'start' | 'end', active: boolean): string => {
 
 const getRouteArrowHtml = (heading: number): string => {
   return `<div style="
-    width:28px;
-    height:28px;
+    width:30px;
+    height:30px;
     position:relative;
     transform: rotate(${heading}deg);
     filter: drop-shadow(0 2px 4px rgba(2,6,23,.38));
   ">
     <div style="
       position:absolute;
-      left:5px;
-      top:2px;
+      left:4px;
+      top:1px;
       width:0;
       height:0;
-      border-left:9px solid transparent;
-      border-right:9px solid transparent;
-      border-bottom:20px solid #22D3EE;
+      border-left:11px solid transparent;
+      border-right:11px solid transparent;
+      border-bottom:24px solid rgba(8,13,28,.88);
     "></div>
     <div style="
       position:absolute;
-      left:10px;
-      top:17px;
+      left:7px;
+      top:4px;
+      width:0;
+      height:0;
+      border-left:8px solid transparent;
+      border-right:8px solid transparent;
+      border-bottom:18px solid #FBBF24;
+    "></div>
+    <div style="
+      position:absolute;
+      left:11px;
+      top:21px;
       width:8px;
       height:8px;
       border-radius:4px;
-      background:#0891B2;
-      border:1px solid rgba(240,249,255,.85);
+      background:#B45309;
+      border:1px solid rgba(254,243,199,.9);
     "></div>
   </div>`;
 };
@@ -346,8 +356,8 @@ export const MapViewComponent: React.FC<Props> = ({
     const icon = LLib.divIcon({
       className: '',
       html: getUserArrowHtml(visibleHeading),
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     });
 
     if (userMarkerRef.current) {
@@ -385,9 +395,9 @@ export const MapViewComponent: React.FC<Props> = ({
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
       routeOutlineLayerRef.current = LLib.polyline(latlngs, {
-        color: '#fff',
-        weight: 9,
-        opacity: 0.92,
+        color: 'rgba(8,13,28,.58)',
+        weight: 7,
+        opacity: 0.94,
       }).addTo(map);
       const routeSections = splitRouteByTutorMatches(route.polyline, tutorMatches);
       routeLayerRefs.current = routeSections.map((section) => {
@@ -397,7 +407,7 @@ export const MapViewComponent: React.FC<Props> = ({
           section.coordinates.map((point) => [point.latitude, point.longitude]),
           {
             color: isTutorSection ? (isActiveTutorSection ? '#22D3EE' : '#F97316') : '#7C3AED',
-            weight: isTutorSection ? 6 : 5,
+            weight: isTutorSection ? 5.5 : 5,
             opacity: 0.96,
           }
         ).addTo(map);
@@ -407,7 +417,7 @@ export const MapViewComponent: React.FC<Props> = ({
         maneuverCueLayerRef.current = LLib.polyline(
           maneuverCue.section.map((point) => [point.latitude, point.longitude]),
           {
-            color: '#22D3EE',
+            color: '#FBBF24',
             weight: 8,
             opacity: 0.92,
           }
@@ -418,8 +428,8 @@ export const MapViewComponent: React.FC<Props> = ({
         const icon = LLib.divIcon({
           className: '',
           html: getRouteArrowHtml(maneuverCue.arrow.heading),
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
         });
         routeArrowMarkersRef.current = [LLib.marker([maneuverCue.arrow.coordinate.latitude, maneuverCue.arrow.coordinate.longitude], {
           icon,
@@ -478,14 +488,14 @@ export const MapViewComponent: React.FC<Props> = ({
       const startIcon = LLib.divIcon({
         className: '',
         html: getTutorMarkerHtml('start', isActive),
-        iconSize: [104, 28],
-        iconAnchor: [52, 26],
+        iconSize: [98, 26],
+        iconAnchor: [49, 24],
       });
       const endIcon = LLib.divIcon({
         className: '',
         html: getTutorMarkerHtml('end', isActive),
-        iconSize: [104, 28],
-        iconAnchor: [52, 26],
+        iconSize: [98, 26],
+        iconAnchor: [49, 24],
       });
 
       markersRef.current.push(

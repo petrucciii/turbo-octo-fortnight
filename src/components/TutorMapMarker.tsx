@@ -22,15 +22,15 @@ export const TutorMapMarker: React.FC<Props> = ({ type, active }) => {
 
 const styles = StyleSheet.create({
   container: {
-    minWidth: 100,
-    height: 28,
-    borderRadius: 14,
-    paddingLeft: 6,
-    paddingRight: 10,
+    minWidth: 94,
+    height: 26,
+    borderRadius: 13,
+    paddingLeft: 5,
+    paddingRight: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(15,23,42,0.88)',
+    backgroundColor: 'rgba(15,23,42,0.84)',
     borderWidth: 1,
     borderColor: 'rgba(251,146,60,0.7)',
     shadowColor: '#020617',
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,27,75,0.9)',
   },
   icon: {
-    width: 16,
-    height: 16,
+    width: 15,
+    height: 15,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: '#F8FAFC',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
   },
 });

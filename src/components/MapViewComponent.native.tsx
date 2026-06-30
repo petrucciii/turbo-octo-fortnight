@@ -174,8 +174,8 @@ export const MapViewComponent: React.FC<Props> = ({
             <Polyline
               key={`route-outline-${routeKey}`}
               coordinates={route.polyline}
-              strokeColor="rgba(255,255,255,0.92)"
-              strokeWidth={9}
+              strokeColor="rgba(8,13,28,0.56)"
+              strokeWidth={8}
               zIndex={1}
             />
             {routeSections.map((section) => {
@@ -186,7 +186,7 @@ export const MapViewComponent: React.FC<Props> = ({
                   key={`route-section-${routeKey}-${section.id}`}
                   coordinates={section.coordinates}
                   strokeColor={isTutorSection ? (isActiveTutorSection ? '#22D3EE' : '#F97316') : '#7C3AED'}
-                  strokeWidth={isTutorSection ? 6 : 5}
+                  strokeWidth={isTutorSection ? 5.5 : 5}
                   zIndex={isTutorSection ? 3 : 2}
                 />
               );
@@ -195,7 +195,7 @@ export const MapViewComponent: React.FC<Props> = ({
               <Polyline
                 key={`route-cue-${routeKey}-${maneuverCue.id}`}
                 coordinates={maneuverCue.section}
-                strokeColor="#22D3EE"
+                strokeColor="#FBBF24"
                 strokeWidth={8}
                 zIndex={5}
               />
@@ -208,6 +208,7 @@ export const MapViewComponent: React.FC<Props> = ({
                 zIndex={8}
               >
                 <View style={[styles.routeArrowShell, { transform: [{ rotate: `${maneuverCue.arrow.heading}deg` }] }]}>
+                  <View style={styles.routeArrowOutline} />
                   <View style={styles.routeArrowHead} />
                   <View style={styles.routeArrowStem} />
                 </View>
@@ -297,22 +298,40 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   routeArrowHead: {
+    position: 'absolute',
+    top: 4,
+    left: 6,
     width: 0,
     height: 0,
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderBottomWidth: 20,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 18,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#22D3EE',
+    borderBottomColor: '#FBBF24',
+  },
+  routeArrowOutline: {
+    position: 'absolute',
+    top: 1,
+    left: 3,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 11,
+    borderRightWidth: 11,
+    borderBottomWidth: 24,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(8,13,28,0.88)',
   },
   routeArrowStem: {
+    position: 'absolute',
+    top: 21,
+    left: 10,
     width: 8,
     height: 8,
-    marginTop: -3,
     borderRadius: 4,
-    backgroundColor: '#0891B2',
+    backgroundColor: '#B45309',
     borderWidth: 1,
-    borderColor: 'rgba(240,249,255,0.85)',
+    borderColor: 'rgba(254,243,199,0.9)',
   },
 });

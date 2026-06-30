@@ -131,10 +131,10 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   containerCompact: {
-    top: 86,
-    left: 16,
-    right: 16,
-    padding: 10,
+    top: 84,
+    left: 14,
+    right: 14,
+    padding: 9,
     borderRadius: 14,
   },
   containerAlert: {
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   kicker: {
     color: '#FDBA74',
@@ -186,12 +186,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metric: {
-    minWidth: 58,
+    minWidth: 54,
     flexGrow: 1,
   },
   metricValue: {
     color: '#F8FAFC',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
   },
   metricLabel: {
@@ -211,13 +211,13 @@ const styles = StyleSheet.create({
     color: '#BAE6FD',
   },
   recommendation: {
-    marginTop: 10,
-    borderRadius: 12,
+    marginTop: 8,
+    borderRadius: 11,
     backgroundColor: 'rgba(34,211,238,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(34,211,238,0.22)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
