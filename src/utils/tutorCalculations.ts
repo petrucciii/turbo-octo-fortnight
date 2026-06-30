@@ -17,24 +17,32 @@ export const calculateRecommendedSpeed = (
   elapsedSeconds: number,
   speedLimitKmh: number
 ): number | null => {
-  if (elapsedSeconds <= 0 || distanceTravelledKm <= 0) return speedLimitKmh;
-  
-  const elapsedHours = elapsedSeconds / 3600;
-  const remainingDistanceKm = calculateRemainingDistance(segmentLengthKm, distanceTravelledKm);
-  
-  if (remainingDistanceKm <= 0) return speedLimitKmh;
-
-  const minimumTotalTimeHours = segmentLengthKm / speedLimitKmh;
-  const remainingMinimumTimeHours = minimumTotalTimeHours - elapsedHours;
-
-  if (remainingMinimumTimeHours <= 0) {
-    // Non è più possibile rientrare nella media
-    return null; 
+  if (
+    !Number.isFinite(segmentLengthKm) ||
+    !Number.isFinite(distanceTravelledKm) ||
+    !Number.isFinite(elapsedSeconds) ||
+    !Number.isFinite(speedLimitKmh) ||
+    segmentLengthKm <= 0 ||
+    speedLimitKmh <= 0
+  ) {
+    return null;
   }
 
-  const recommendedSpeedKmh = remainingDistanceKm / remainingMinimumTimeHours;
-  
-  // Regola di sicurezza: non consigliare mai una velocità superiore al limite
+  if (elapsedSeconds <= 0 || distanceTravelledKm <= 0) return speedLimitKmh;
+
+  const elapsedHours = elapsedSeconds / 3600;
+  const remainingDistanceKm = calculateRemainingDistance(segmentLengthKm, distanceTravelledKm);
+
+  if (remainingDistanceKm <= 0) return speedLimitKmh;
+
+  const maximumAllowedTotalTimeHours = segmentLengthKm / speedLimitKmh;
+  const remainingAllowedTimeHours = maximumAllowedTotalTimeHours - elapsedHours;
+
+  if (remainingAllowedTimeHours <= 0) return null;
+
+  const recommendedSpeedKmh = remainingDistanceKm / remainingAllowedTimeHours;
+  if (!Number.isFinite(recommendedSpeedKmh) || recommendedSpeedKmh <= 0) return null;
+
   return recommendedSpeedKmh > speedLimitKmh ? speedLimitKmh : recommendedSpeedKmh;
 };
 
@@ -42,9 +50,9 @@ export const getTutorStatus = (averageSpeedKmh: number, speedLimitKmh: number): 
   if (averageSpeedKmh <= 0) return 'safe';
   if (averageSpeedKmh > speedLimitKmh) {
     return 'over_limit';
-  } else if (averageSpeedKmh > speedLimitKmh - 5) {
-    return 'warning';
-  } else {
-    return 'safe';
   }
+  if (averageSpeedKmh > speedLimitKmh - 5) {
+    return 'warning';
+  }
+  return 'safe';
 };

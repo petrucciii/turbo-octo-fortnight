@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { projectCoordinate } from '../utils/motion';
 import { ManeuverRouteCue } from '../utils/routeArrows';
+import { UserPositionArrow } from './UserPositionArrow';
+import { TutorMapMarker } from './TutorMapMarker';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -82,8 +84,9 @@ export const MapViewComponent: React.FC<Props> = ({
   const routeKey = route
     ? `${overlayResetKey}-${route.polyline.length}-${route.distanceKm.toFixed(3)}-${destination?.latitude ?? 'no-dest'}-${destination?.longitude ?? 'no-dest'}`
     : `no-route-${overlayResetKey}`;
+  const headingKey = Math.round(safeHeading);
   const userMarkerKey = visibleUserLocation
-    ? `user-marker-${overlayResetKey}-${visibleUserLocation.latitude.toFixed(6)}-${visibleUserLocation.longitude.toFixed(6)}`
+    ? `user-marker-${overlayResetKey}-${visibleUserLocation.latitude.toFixed(6)}-${visibleUserLocation.longitude.toFixed(6)}-${headingKey}`
     : `user-marker-empty-${overlayResetKey}`;
 
   const animateToUser = (duration = 700) => {
@@ -231,26 +234,27 @@ export const MapViewComponent: React.FC<Props> = ({
               <Polyline
                 key={`tutor-line-${overlayResetKey}-${segment.id}`}
                 coordinates={[start, end]}
-                strokeColor={isActive ? '#00c853' : '#ff8f00'}
-                strokeWidth={isActive ? 9 : 7}
+                strokeColor={isActive ? '#22D3EE' : '#F97316'}
+                strokeWidth={isActive ? 8 : 6}
                 zIndex={4}
               />
               <Marker
                 coordinate={start}
                 title={`Inizio Tutor ${segment.highway_name}`}
                 description={segment.name}
-                pinColor={isActive ? '#00c853' : '#ff8f00'}
-              />
+                anchor={{ x: 0.5, y: 0.9 }}
+                zIndex={6}
+              >
+                <TutorMapMarker type="start" active={isActive} />
+              </Marker>
               <Marker
                 coordinate={end}
                 title={`Fine Tutor ${segment.highway_name}`}
                 description={segment.name}
-                pinColor={isActive ? '#e53935' : '#ff8f00'}
-              />
-              <Marker coordinate={start} anchor={{ x: 0.5, y: 1.4 }}>
-                <View style={styles.tutorLabel}>
-                  <Text style={styles.tutorLabelText}>Tutor</Text>
-                </View>
+                anchor={{ x: 0.5, y: 0.9 }}
+                zIndex={6}
+              >
+                <TutorMapMarker type="end" active={isActive} />
               </Marker>
             </React.Fragment>
           );
@@ -262,11 +266,10 @@ export const MapViewComponent: React.FC<Props> = ({
             coordinate={visibleUserLocation}
             anchor={{ x: 0.5, y: 0.5 }}
             zIndex={9999}
+            flat
+            tracksViewChanges
           >
-            <View style={[styles.userArrowShell, { transform: [{ rotate: `${safeHeading}deg` }] }]}>
-              <View style={styles.userArrowHead} />
-              <View style={styles.userArrowTail} />
-            </View>
+            <UserPositionArrow heading={safeHeading} />
           </Marker>
         ) : null}
       </MapView>
@@ -289,36 +292,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
   },
-  userArrowShell: {
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
-    justifyContent: 'center',
-  },
-  userArrowHead: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 17,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#22D3EE',
-  },
-  userArrowTail: {
-    width: 6,
-    height: 9,
-    marginTop: -3,
-    borderRadius: 3,
-    backgroundColor: '#0284C7',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.72)',
-  },
   routeArrow: {
     width: 0,
     height: 0,
@@ -328,18 +301,5 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: '#22D3EE',
-  },
-  tutorLabel: {
-    backgroundColor: '#ff8f00',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  tutorLabelText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '900',
   },
 });

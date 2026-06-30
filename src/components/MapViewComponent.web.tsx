@@ -25,32 +25,89 @@ interface Props {
 const getUserArrowHtml = (heading: number | null): string => {
   const rotation = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
   return `<div style="
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     position: relative;
     transform: rotate(${rotation}deg);
-    transform-origin: 15px 15px;
-    filter: drop-shadow(0 2px 5px rgba(0,0,0,.42));
+    transform-origin: 16px 16px;
+    filter: drop-shadow(0 2px 5px rgba(2,6,23,.42));
   ">
     <div style="
       position: absolute;
       left: 7px;
       top: 2px;
-      width: 16px;
+      width: 18px;
       height: 24px;
-      background: linear-gradient(180deg,#67E8F9 0%,#0284C7 100%);
-      clip-path: polygon(50% 0%, 88% 82%, 50% 68%, 12% 82%);
+      background: rgba(34,211,238,.18);
+      border-radius: 10px;
+    "></div>
+    <div style="
+      position: absolute;
+      left: 7px;
+      top: 2px;
+      width: 18px;
+      height: 26px;
+      background: rgba(15,23,42,.9);
+      clip-path: polygon(50% 0%, 92% 78%, 64% 70%, 64% 100%, 36% 100%, 36% 70%, 8% 78%);
       border-radius: 8px;
     "></div>
     <div style="
       position: absolute;
-      left: 12px;
-      top: 13px;
-      width: 6px;
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(8,47,73,.9);
+      left: 9px;
+      top: 4px;
+      width: 14px;
+      height: 22px;
+      background: linear-gradient(180deg,#67E8F9 0%,#0EA5E9 100%);
+      clip-path: polygon(50% 0%, 88% 82%, 50% 68%, 12% 82%);
+      border-radius: 8px;
     "></div>
+    <div style="
+      position:absolute;
+      left:14px;
+      top:15px;
+      width:4px;
+      height:4px;
+      border-radius:2px;
+      background:#E0F2FE;
+    "></div>
+  </div>`;
+};
+
+const getTutorMarkerHtml = (type: 'start' | 'end', active: boolean): string => {
+  const isStart = type === 'start';
+  const label = isStart ? 'Inizio Tutor' : 'Fine Tutor';
+  const accent = active ? '#22D3EE' : isStart ? '#F97316' : '#A855F7';
+  const glyph = isStart
+    ? '<div style="width:2px;height:9px;border-radius:1px;background:#FFF7ED;"></div>'
+    : '<div style="width:6px;height:6px;border-radius:3px;background:#F5F3FF;"></div>';
+
+  return `<div style="
+    display:flex;
+    align-items:center;
+    gap:6px;
+    height:28px;
+    min-width:100px;
+    padding:0 10px 0 6px;
+    border-radius:14px;
+    background:${active ? 'rgba(30,27,75,.92)' : 'rgba(15,23,42,.9)'};
+    border:1px solid ${active ? 'rgba(168,85,247,.9)' : 'rgba(251,146,60,.72)'};
+    box-shadow:0 2px 7px rgba(2,6,23,.34);
+    color:#F8FAFC;
+    font-size:11px;
+    font-weight:900;
+    white-space:nowrap;
+  ">
+    <div style="
+      width:16px;
+      height:16px;
+      border-radius:8px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:${accent};
+      border:1px solid rgba(255,255,255,.78);
+    ">${glyph}</div>
+    <span>${label}</span>
   </div>`;
 };
 
@@ -278,8 +335,8 @@ export const MapViewComponent: React.FC<Props> = ({
     const icon = LLib.divIcon({
       className: '',
       html: getUserArrowHtml(visibleHeading),
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
     });
 
     if (userMarkerRef.current) {
@@ -395,35 +452,29 @@ export const MapViewComponent: React.FC<Props> = ({
 
     tutorSegments.forEach((segment) => {
       const isActive = activeTutorSegment?.id === segment.id;
-      const color = isActive ? '#00c853' : '#ff8f00';
+      const color = isActive ? '#22D3EE' : '#F97316';
       const start = [segment.start_latitude, segment.start_longitude];
       const end = [segment.end_latitude, segment.end_longitude];
 
       markersRef.current.push(
         LLib.polyline([start, end], {
           color,
-          weight: isActive ? 9 : 7,
+          weight: isActive ? 8 : 6,
           opacity: 0.95,
         }).addTo(map)
       );
 
-      const labelIcon = LLib.divIcon({
-        className: '',
-        html: `<div style="background:${color};color:#fff;font-weight:900;border:2px solid #fff;border-radius:10px;padding:4px 8px;box-shadow:0 2px 4px rgba(0,0,0,.25);">Tutor</div>`,
-        iconSize: [62, 28],
-        iconAnchor: [31, 34],
-      });
       const startIcon = LLib.divIcon({
         className: '',
-        html: `<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        html: getTutorMarkerHtml('start', isActive),
+        iconSize: [104, 28],
+        iconAnchor: [52, 26],
       });
       const endIcon = LLib.divIcon({
         className: '',
-        html: `<div style="width:16px;height:16px;background:#e74c3c;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        html: getTutorMarkerHtml('end', isActive),
+        iconSize: [104, 28],
+        iconAnchor: [52, 26],
       });
 
       markersRef.current.push(
@@ -432,8 +483,7 @@ export const MapViewComponent: React.FC<Props> = ({
           .addTo(map),
         LLib.marker(end, { icon: endIcon })
           .bindPopup(`Fine Tutor: ${segment.name}`)
-          .addTo(map),
-        LLib.marker(start, { icon: labelIcon }).addTo(map)
+          .addTo(map)
       );
     });
   }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, overlayResetKey, LLib]);

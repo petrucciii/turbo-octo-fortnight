@@ -202,12 +202,11 @@ export const HomeMapScreen = ({ navigation }: any) => {
         const fallbackHeading = lastMotionSampleRef.current && sanitizeSpeedKmh(fallbackSpeed) !== null
           ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
           : null;
+        const gpsHeading = typeof rawHeading === 'number' && rawHeading >= 0 ? rawHeading : null;
         const candidateHeading =
           stableSpeed !== null && stableSpeed >= 4
-            ? typeof rawHeading === 'number' && rawHeading >= 0
-              ? rawHeading
-              : fallbackHeading
-            : deviceHeadingRef.current ?? fallbackHeading;
+            ? fallbackHeading ?? gpsHeading ?? deviceHeadingRef.current
+            : deviceHeadingRef.current ?? gpsHeading ?? fallbackHeading;
         const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading, 0.2);
         lastStableHeadingRef.current = stableHeading;
 
@@ -251,9 +250,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
           deviceHeadingRef.current = stableHeading;
           lastStableHeadingRef.current = stableHeading;
 
-          const locationState = useLocationStore.getState().currentLocation;
+          const locationStoreState = useLocationStore.getState();
+          const locationState = locationStoreState.currentLocation ?? locationStoreState.lastKnownLocation;
           const currentSpeed = sanitizeSpeedKmh(locationState?.speedKmh);
-          if (locationState && currentSpeed === null) {
+          const locationAgeMs = locationState ? Date.now() - locationState.timestamp : Number.POSITIVE_INFINITY;
+          const shouldUseDeviceHeading = currentSpeed === null || currentSpeed < 4 || locationAgeMs > 2500;
+
+          if (locationState && shouldUseDeviceHeading) {
             const updatedLocation: LocationData = {
               ...locationState,
               heading: stableHeading,
@@ -691,6 +694,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
     visibleUserLocation?.speedKmh && visibleUserLocation.speedKmh > 0
       ? (activeTutorDistanceRemainingKm / visibleUserLocation.speedKmh) * 60
       : null;
+  const activeTutorElapsedSeconds = tutorStore.tutorEntryTime
+    ? Math.max(1, (Date.now() - tutorStore.tutorEntryTime) / 1000)
+    : null;
   const visibleTutorSegments = route ? routeTutorMatches.map((match) => match.segment) : [];
   const visibleSpeedLimit =
     tutorStore.activeTutorSegment?.speed_limit_kmh ??
@@ -804,6 +810,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
               distanceRemainingKm={activeTutorDistanceRemainingKm}
               timeRemainingMinutes={activeTutorTimeRemainingMinutes}
               status={tutorStore.tutorStatus}
+              distanceTravelledKm={tutorStore.distanceTravelledKm}
+              elapsedSeconds={activeTutorElapsedSeconds}
             />
           ) : null}
 
