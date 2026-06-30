@@ -39,6 +39,7 @@ export interface RouteProgress {
   distanceTravelledKm: number;
   distanceRemainingKm: number;
   durationRemainingMinutes: number;
+  instructionDistanceRemainingKm: number | null;
   currentInstruction: RouteInstruction | null;
   nextInstruction: RouteInstruction | null;
   currentRoadName: string | null;

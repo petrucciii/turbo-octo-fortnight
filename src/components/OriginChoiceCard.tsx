@@ -5,6 +5,7 @@ import { Place } from '../types/navigation';
 interface Props {
   destination: Place;
   canUseCurrentLocation: boolean;
+  isWaitingForCurrentLocation?: boolean;
   onUseCurrentLocation: () => void;
   onChooseManualOrigin: () => void;
   onCancel: () => void;
@@ -13,6 +14,7 @@ interface Props {
 export const OriginChoiceCard: React.FC<Props> = ({
   destination,
   canUseCurrentLocation,
+  isWaitingForCurrentLocation = false,
   onUseCurrentLocation,
   onChooseManualOrigin,
   onCancel,
@@ -26,11 +28,13 @@ export const OriginChoiceCard: React.FC<Props> = ({
       <Text style={styles.question}>Da dove vuoi partire?</Text>
 
       <TouchableOpacity
-        style={[styles.primaryButton, !canUseCurrentLocation && styles.disabledButton]}
+        style={[styles.primaryButton, (!canUseCurrentLocation || isWaitingForCurrentLocation) && styles.disabledButton]}
         onPress={onUseCurrentLocation}
-        disabled={!canUseCurrentLocation}
+        disabled={isWaitingForCurrentLocation}
       >
-        <Text style={styles.primaryButtonText}>Usa la mia posizione attuale</Text>
+        <Text style={styles.primaryButtonText}>
+          {isWaitingForCurrentLocation ? 'Attendo posizione GPS...' : 'Usa la mia posizione attuale'}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.secondaryButton} onPress={onChooseManualOrigin}>

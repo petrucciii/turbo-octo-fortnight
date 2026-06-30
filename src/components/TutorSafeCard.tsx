@@ -101,7 +101,7 @@ export const TutorSafeCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 142,
+    top: 214,
     left: 16,
     right: 16,
     backgroundColor: '#1c1c1e',

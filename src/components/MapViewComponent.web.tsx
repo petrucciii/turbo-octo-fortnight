@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Coordinate, RouteInfo } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
+import { projectCoordinate } from '../utils/motion';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -12,38 +13,57 @@ interface Props {
   destination: Coordinate | null;
   heading: number | null;
   isNavigating: boolean;
+  followUserLocation: boolean;
+  recenterRequestId: number;
+  onUserGesture: () => void;
 }
 
-const getUserMarkerHtml = (heading: number | null): string => {
+const getVehicleMarkerHtml = (heading: number | null): string => {
   const rotation = heading ?? 0;
   return `<div style="
-    width: 28px;
-    height: 28px;
+    width: 46px;
+    height: 56px;
     position: relative;
     transform: rotate(${rotation}deg);
+    transform-origin: 23px 28px;
   ">
     <div style="
       position: absolute;
-      left: 8px;
-      top: -2px;
+      left: 14px;
+      top: 0;
       width: 0;
       height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-bottom: 13px solid #4285f4;
-      filter: drop-shadow(0 1px 2px rgba(0,0,0,.45));
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 18px solid #2f6fff;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,.35));
     "></div>
     <div style="
       position: absolute;
-      left: 5px;
-      top: 5px;
-      width: 18px;
-      height: 18px;
-      background: #4285f4;
-      border: 3px solid #fff;
-      border-radius: 50%;
-      box-shadow: 0 0 14px rgba(66,133,244,.65);
-    "></div>
+      left: 8px;
+      top: 16px;
+      width: 30px;
+      height: 34px;
+      background: #f8fbff;
+      border: 3px solid #2f6fff;
+      border-radius: 9px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.38);
+    ">
+      <div style="
+        width: 16px;
+        height: 9px;
+        margin: 4px auto 8px;
+        border-radius: 4px;
+        background: #cfe8ff;
+      "></div>
+      <div style="
+        width: 18px;
+        height: 4px;
+        margin: 0 auto;
+        border-radius: 3px;
+        background: #d92d20;
+      "></div>
+    </div>
   </div>`;
 };
 
@@ -56,14 +76,27 @@ export const MapViewComponent: React.FC<Props> = ({
   destination,
   heading,
   isNavigating,
+  followUserLocation,
+  recenterRequestId,
+  onUserGesture,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const routeLayerRef = useRef<any>(null);
+  const routeOutlineLayerRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [LLib, setLLib] = useState<any>(null);
+
+  const centerOnUser = (animate = true) => {
+    if (!mapInstanceRef.current || !userLocation) return;
+    const map = mapInstanceRef.current;
+    const center = heading !== null ? projectCoordinate(userLocation, heading, 62) : userLocation;
+    map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
+      animate,
+    });
+  };
 
   useEffect(() => {
     const loadLeaflet = async () => {
@@ -102,13 +135,27 @@ export const MapViewComponent: React.FC<Props> = ({
 
     const map = LLib.map(mapContainerRef.current, {
       zoomControl: false,
-    }).setView([defaultLat, defaultLng], 13);
+    }).setView([defaultLat, defaultLng], 15);
 
-    LLib.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20,
-    }).addTo(map);
+    LLib.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Tiles &copy; Esri',
+        maxZoom: 20,
+      }
+    ).addTo(map);
+    LLib.tileLayer(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: '',
+        maxZoom: 20,
+        opacity: 0.7,
+      }
+    ).addTo(map);
+
+    map.on('dragstart zoomstart', () => {
+      if (isNavigating) onUserGesture();
+    });
 
     LLib.control.zoom({ position: 'bottomright' }).addTo(map);
     mapInstanceRef.current = map;
@@ -119,7 +166,7 @@ export const MapViewComponent: React.FC<Props> = ({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [leafletLoaded, LLib, origin, userLocation]);
+  }, [leafletLoaded, LLib, origin, userLocation, isNavigating, onUserGesture]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib || !userLocation) return;
@@ -127,9 +174,9 @@ export const MapViewComponent: React.FC<Props> = ({
     const map = mapInstanceRef.current;
     const icon = LLib.divIcon({
       className: '',
-      html: getUserMarkerHtml(heading),
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
+      html: getVehicleMarkerHtml(heading),
+      iconSize: [46, 56],
+      iconAnchor: [23, 28],
     });
 
     if (userMarkerRef.current) {
@@ -142,14 +189,16 @@ export const MapViewComponent: React.FC<Props> = ({
       }).addTo(map);
     }
 
-    if (isNavigating) {
-      map.setView([userLocation.latitude, userLocation.longitude], Math.max(map.getZoom(), 17), {
-        animate: true,
-      });
+    if (isNavigating && followUserLocation) {
+      centerOnUser(true);
     } else if (!route) {
       map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), { animate: true });
     }
-  }, [userLocation, heading, isNavigating, route, LLib]);
+  }, [userLocation, heading, isNavigating, followUserLocation, route, LLib]);
+
+  useEffect(() => {
+    centerOnUser(true);
+  }, [recenterRequestId]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
@@ -159,17 +208,26 @@ export const MapViewComponent: React.FC<Props> = ({
       map.removeLayer(routeLayerRef.current);
       routeLayerRef.current = null;
     }
+    if (routeOutlineLayerRef.current) {
+      map.removeLayer(routeOutlineLayerRef.current);
+      routeOutlineLayerRef.current = null;
+    }
 
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
+      routeOutlineLayerRef.current = LLib.polyline(latlngs, {
+        color: '#fff',
+        weight: 11,
+        opacity: 0.95,
+      }).addTo(map);
       routeLayerRef.current = LLib.polyline(latlngs, {
-        color: '#3498db',
-        weight: 6,
-        opacity: 0.88,
+        color: '#1b2cff',
+        weight: 7,
+        opacity: 0.95,
       }).addTo(map);
 
       if (!isNavigating) {
-        map.fitBounds(routeLayerRef.current.getBounds(), { padding: [60, 60] });
+        map.fitBounds(routeLayerRef.current.getBounds(), { padding: [70, 70] });
       }
     }
   }, [route, isNavigating, LLib]);
@@ -181,7 +239,7 @@ export const MapViewComponent: React.FC<Props> = ({
     markersRef.current.forEach((marker) => map.removeLayer(marker));
     markersRef.current = [];
 
-    if (origin) {
+    if (origin && !isNavigating) {
       const originIcon = LLib.divIcon({
         className: '',
         html: `<div style="width:22px;height:22px;background:#2ecc71;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(46,204,113,.6);"></div>`,
@@ -211,19 +269,24 @@ export const MapViewComponent: React.FC<Props> = ({
 
     tutorSegments.forEach((segment) => {
       const isActive = activeTutorSegment?.id === segment.id;
-      const color = isActive ? '#2ecc71' : '#f39c12';
+      const color = isActive ? '#00c853' : '#ff8f00';
       const start = [segment.start_latitude, segment.start_longitude];
       const end = [segment.end_latitude, segment.end_longitude];
 
       markersRef.current.push(
         LLib.polyline([start, end], {
           color,
-          weight: isActive ? 6 : 4,
-          opacity: 0.9,
-          dashArray: isActive ? undefined : '10 8',
+          weight: isActive ? 9 : 7,
+          opacity: 0.95,
         }).addTo(map)
       );
 
+      const labelIcon = LLib.divIcon({
+        className: '',
+        html: `<div style="background:${color};color:#fff;font-weight:900;border:2px solid #fff;border-radius:10px;padding:4px 8px;box-shadow:0 2px 4px rgba(0,0,0,.25);">Tutor</div>`,
+        iconSize: [62, 28],
+        iconAnchor: [31, 34],
+      });
       const startIcon = LLib.divIcon({
         className: '',
         html: `<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
@@ -243,10 +306,11 @@ export const MapViewComponent: React.FC<Props> = ({
           .addTo(map),
         LLib.marker(end, { icon: endIcon })
           .bindPopup(`Fine Tutor: ${segment.name}`)
-          .addTo(map)
+          .addTo(map),
+        LLib.marker(start, { icon: labelIcon }).addTo(map)
       );
     });
-  }, [origin, tutorSegments, activeTutorSegment, destination, LLib]);
+  }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, LLib]);
 
   if (!leafletLoaded) {
     return (

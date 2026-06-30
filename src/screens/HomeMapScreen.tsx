@@ -9,6 +9,9 @@ import { TutorSafeCard } from '../components/TutorSafeCard';
 import { OriginChoiceCard } from '../components/OriginChoiceCard';
 import { NavigationInstructionCard } from '../components/NavigationInstructionCard';
 import { TutorApproachAlert } from '../components/TutorApproachAlert';
+import { NavigationSideControls } from '../components/NavigationSideControls';
+import { SpeedLimitBox } from '../components/SpeedLimitBox';
+import { TutorCompletionToast } from '../components/TutorCompletionToast';
 import { useLocationStore } from '../store/locationStore';
 import { useNavigationStore } from '../store/navigationStore';
 import { useTutorStore } from '../store/tutorStore';
@@ -24,6 +27,12 @@ import {
   getRouteProgress,
   getUpcomingTutorMatch,
 } from '../utils/routeProgress';
+import {
+  calculateBearing,
+  getFallbackSpeedKmh,
+  smoothHeading,
+} from '../utils/motion';
+import { distancePointToSegmentMeters } from '../utils/segmentDistance';
 
 const TUTOR_WARNING_DISTANCE_KM = 1;
 const REROUTE_COOLDOWN_MS = 15_000;
@@ -66,6 +75,12 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [isRerouting, setIsRerouting] = useState(false);
+  const [isFollowingUser, setIsFollowingUser] = useState(false);
+  const [recenterRequestId, setRecenterRequestId] = useState(0);
+  const [pendingUseCurrentOrigin, setPendingUseCurrentOrigin] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [currentRouteProgress, setCurrentRouteProgress] = useState<RouteProgress | null>(null);
+  const [tutorCompletionMessage, setTutorCompletionMessage] = useState<string | null>(null);
   const [routeTutorMatches, setRouteTutorMatches] = useState<RouteTutorMatch[]>([]);
   const [upcomingTutor, setUpcomingTutor] = useState<{
     match: RouteTutorMatch;
@@ -80,6 +95,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const lastTutorCoordinateRef = useRef<Coordinate | null>(null);
   const lastRerouteAtRef = useRef(0);
   const isReroutingRef = useRef(false);
+  const lastMotionSampleRef = useRef<{ coordinate: Coordinate; timestamp: number } | null>(null);
+  const lastStableHeadingRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
 
   useEffect(() => {
@@ -96,6 +114,22 @@ export const HomeMapScreen = ({ navigation }: any) => {
     const matches = findTutorSegmentsOnRoute(route, tutorStore.tutorSegments);
     setRouteTutorMatches(matches);
   }, [route, tutorStore.tutorSegments]);
+
+  useEffect(() => {
+    if (!pendingUseCurrentOrigin || !currentLocation) return;
+
+    setPendingUseCurrentOrigin(false);
+    setRoute(null);
+    setOrigin(createCurrentLocationPlace(currentLocation.coordinate));
+  }, [currentLocation, pendingUseCurrentOrigin, setOrigin, setRoute]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -123,17 +157,35 @@ export const HomeMapScreen = ({ navigation }: any) => {
         (location) => {
           const rawSpeed = location.coords.speed;
           const rawHeading = location.coords.heading;
+          const coordinate = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          };
+          const fallbackSpeed = getFallbackSpeedKmh(
+            lastMotionSampleRef.current,
+            coordinate,
+            location.timestamp
+          );
+          const gpsSpeedKmh = typeof rawSpeed === 'number' && rawSpeed >= 0 ? rawSpeed * 3.6 : null;
+          const fallbackHeading = lastMotionSampleRef.current
+            ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
+            : null;
+          const candidateHeading =
+            typeof rawHeading === 'number' && rawHeading >= 0
+              ? rawHeading
+              : fallbackHeading;
+          const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading);
+          lastStableHeadingRef.current = stableHeading;
+
           const locData: LocationData = {
-            coordinate: {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            },
-            speedKmh: typeof rawSpeed === 'number' && rawSpeed >= 0 ? rawSpeed * 3.6 : null,
-            heading: typeof rawHeading === 'number' && rawHeading >= 0 ? rawHeading : null,
+            coordinate,
+            speedKmh: gpsSpeedKmh ?? fallbackSpeed,
+            heading: stableHeading,
             timestamp: location.timestamp,
             accuracy: location.coords.accuracy,
           };
 
+          lastMotionSampleRef.current = { coordinate, timestamp: location.timestamp };
           useLocationStore.getState().setCurrentLocation(locData);
           handleNavigationTickRef.current(locData);
         }
@@ -161,15 +213,17 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
     const calculateRoute = async () => {
       setIsCalculatingRoute(true);
+      setRouteError(null);
       const nextRoute = await getDirections(origin.location, destination.location);
 
       if (cancelled) return;
 
       if (!nextRoute) {
         setRoute(null);
-        Alert.alert('Percorso non trovato', 'Non riesco a calcolare un tragitto per questi punti.');
+        setRouteError('Percorso non disponibile. Prova con un altro punto di partenza o destinazione.');
       } else {
         setRoute(nextRoute);
+        setRouteError(null);
       }
 
       setIsCalculatingRoute(false);
@@ -184,6 +238,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
   const resetTutorRuntime = useCallback(() => {
     setUpcomingTutor(null);
+    setTutorCompletionMessage(null);
     activeTutorMatchRef.current = null;
     warnedTutorIdsRef.current.clear();
     completedTutorIdsRef.current.clear();
@@ -195,15 +250,19 @@ export const HomeMapScreen = ({ navigation }: any) => {
     clearNavigationPlan();
     setDestination(null);
     setRouteTutorMatches([]);
+    setCurrentRouteProgress(null);
+    setRouteError(null);
+    setPendingUseCurrentOrigin(false);
     resetTutorRuntime();
   }, [clearNavigationPlan, resetTutorRuntime, setDestination]);
 
   const useCurrentLocationAsOrigin = useCallback(() => {
     if (!currentLocation) {
-      Alert.alert('Posizione non disponibile', 'Attendi il segnale GPS oppure inserisci un punto di partenza manuale.');
+      setPendingUseCurrentOrigin(true);
       return;
     }
 
+    setPendingUseCurrentOrigin(false);
     setRoute(null);
     setOrigin(createCurrentLocationPlace(currentLocation.coordinate));
   }, [currentLocation, setOrigin, setRoute]);
@@ -215,14 +274,25 @@ export const HomeMapScreen = ({ navigation }: any) => {
     }
 
     resetTutorRuntime();
+    setIsFollowingUser(true);
+    setRecenterRequestId((value) => value + 1);
     startNavigation();
     speak('Navigazione avviata.');
   }, [currentLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
     stopNavigation();
+    setIsFollowingUser(false);
+    setCurrentRouteProgress(null);
+    setRouteTutorMatches([]);
+    setRouteError(null);
     resetTutorRuntime();
   }, [resetTutorRuntime, stopNavigation]);
+
+  const recenterOnUser = useCallback(() => {
+    setIsFollowingUser(true);
+    setRecenterRequestId((value) => value + 1);
+  }, []);
 
   const rerouteFromCurrentLocation = useCallback(async (coordinate: Coordinate) => {
     const navState = useNavigationStore.getState();
@@ -244,6 +314,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
       useNavigationStore.getState().setOrigin(createCurrentLocationPlace(coordinate));
       useNavigationStore.getState().setRoute(nextRoute);
       setRouteTutorMatches(nextMatches);
+      setCurrentRouteProgress(null);
       activeTutorMatchRef.current = activeSegment
         ? nextMatches.find((match) => match.segment.id === activeSegment.id) ?? null
         : null;
@@ -268,14 +339,16 @@ export const HomeMapScreen = ({ navigation }: any) => {
     activeTutorMatchRef.current = null;
     lastTutorCoordinateRef.current = null;
     setUpcomingTutor(null);
-    speak(`Tratto Tutor terminato. Media finale ${Math.round(finalAverage)} chilometri orari.`);
+    const message = `Tratto Tutor terminato. Media finale: ${Math.round(finalAverage)} km/h.`;
+    setTutorCompletionMessage(message);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => setTutorCompletionMessage(null), 6500);
+    speak(message);
 
-    tutorState.endTutorSession(locData.coordinate, Date.now()).then((session) => {
-      if (session) {
-        navigation.navigate('TutorSummary', { session });
-      }
-    });
-  }, [navigation]);
+    tutorState.endTutorSession(locData.coordinate, Date.now());
+  }, []);
 
   const handleTutorSafeTick = useCallback((locData: LocationData, progress: RouteProgress) => {
     const tutorState = useTutorStore.getState();
@@ -303,6 +376,11 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
         const segment = match.segment;
         const startRadiusKm = Math.max(segment.start_radius_meters / 1000, 0.12);
+        const segmentDistanceMeters = distancePointToSegmentMeters(
+          locData.coordinate,
+          { latitude: segment.start_latitude, longitude: segment.start_longitude },
+          { latitude: segment.end_latitude, longitude: segment.end_longitude }
+        );
         const isCloseByRoute = Math.abs(progress.distanceTravelledKm - match.startDistanceKm) <= startRadiusKm;
         const isCloseByGps = isNearPoint(
           locData.coordinate.latitude,
@@ -311,10 +389,14 @@ export const HomeMapScreen = ({ navigation }: any) => {
           segment.start_longitude,
           segment.start_radius_meters
         );
+        const isOnTutorLine =
+          segmentDistanceMeters <= Math.max(70, segment.start_radius_meters) &&
+          progress.distanceTravelledKm >= match.startDistanceKm - 0.08 &&
+          progress.distanceTravelledKm <= match.endDistanceKm + 0.08;
 
         return (
           progress.distanceTravelledKm <= match.endDistanceKm &&
-          (isCloseByRoute || isCloseByGps)
+          (isCloseByRoute || isCloseByGps || isOnTutorLine)
         );
       });
 
@@ -414,13 +496,15 @@ export const HomeMapScreen = ({ navigation }: any) => {
     const progress = getRouteProgress(navState.route, locData.coordinate);
     if (!progress) return;
 
-    const instruction = progress.currentInstruction?.text ?? 'Procedi verso la destinazione';
+    setCurrentRouteProgress(progress);
+
+    const instruction = progress.currentInstruction?.text || 'Prosegui sul percorso';
     updateRouteProgress(
       progress.distanceRemainingKm,
       progress.durationRemainingMinutes,
       instruction,
-      progress.currentRoadName,
-      progress.nextInstruction?.text ?? null,
+      progress.currentRoadName || 'Strada senza nome',
+      progress.nextInstruction?.text || 'Segui il percorso',
       progress.isOffRoute
     );
 
@@ -449,6 +533,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
       ? (activeTutorDistanceRemainingKm / currentLocation.speedKmh) * 60
       : null;
   const visibleTutorSegments = route ? routeTutorMatches.map((match) => match.segment) : [];
+  const visibleSpeedLimit =
+    tutorStore.activeTutorSegment?.speed_limit_kmh ??
+    upcomingTutor?.match.segment.speed_limit_kmh ??
+    null;
 
   return (
     <View style={styles.container}>
@@ -461,6 +549,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
         destination={destination?.location || null}
         heading={currentLocation?.heading ?? null}
         isNavigating={isNavigating}
+        followUserLocation={isFollowingUser}
+        recenterRequestId={recenterRequestId}
+        onUserGesture={() => setIsFollowingUser(false)}
       />
 
       {!isNavigating && !destination ? (
@@ -470,17 +561,43 @@ export const HomeMapScreen = ({ navigation }: any) => {
       {!isNavigating && destination && !origin ? (
         <OriginChoiceCard
           destination={destination}
-          canUseCurrentLocation={Boolean(currentLocation)}
+          canUseCurrentLocation
+          isWaitingForCurrentLocation={pendingUseCurrentOrigin}
           onUseCurrentLocation={useCurrentLocationAsOrigin}
           onChooseManualOrigin={() => navigation.navigate('SearchDestination', { mode: 'origin' })}
           onCancel={cancelPlan}
         />
       ) : null}
 
+      {!isNavigating && destination && !origin && pendingUseCurrentOrigin ? (
+        <View style={styles.loadingRouteCard}>
+          <ActivityIndicator color="#3498db" />
+          <Text style={styles.loadingRouteText}>Attendo posizione GPS...</Text>
+        </View>
+      ) : null}
+
       {!isNavigating && origin && destination && isCalculatingRoute ? (
         <View style={styles.loadingRouteCard}>
           <ActivityIndicator color="#3498db" />
           <Text style={styles.loadingRouteText}>Calcolo percorso migliore...</Text>
+        </View>
+      ) : null}
+
+      {!isNavigating && origin && destination && routeError && !isCalculatingRoute ? (
+        <View style={styles.routeErrorCard}>
+          <Text style={styles.routeErrorTitle}>Percorso non disponibile</Text>
+          <Text style={styles.routeErrorText}>{routeError}</Text>
+          <View style={styles.routeErrorActions}>
+            <TouchableOpacity style={styles.routeErrorButton} onPress={cancelPlan}>
+              <Text style={styles.routeErrorButtonText}>Cambia destinazione</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.routeErrorButtonPrimary}
+              onPress={() => navigation.navigate('SearchDestination', { mode: 'origin' })}
+            >
+              <Text style={styles.routeErrorButtonPrimaryText}>Cambia partenza</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : null}
 
@@ -498,9 +615,10 @@ export const HomeMapScreen = ({ navigation }: any) => {
       {isNavigating ? (
         <>
           <NavigationInstructionCard
-            instruction={currentInstruction}
-            nextInstruction={nextInstruction}
+            instruction={currentRouteProgress?.currentInstruction ?? null}
+            nextInstruction={currentRouteProgress?.nextInstruction ?? null}
             currentRoadName={currentRoadName}
+            distanceToManeuverKm={currentRouteProgress?.instructionDistanceRemainingKm ?? null}
             isOffRoute={isOffRoute}
             isRerouting={isRerouting}
           />
@@ -523,6 +641,29 @@ export const HomeMapScreen = ({ navigation }: any) => {
               status={tutorStore.tutorStatus}
             />
           ) : null}
+
+          {tutorCompletionMessage ? (
+            <TutorCompletionToast message={tutorCompletionMessage} />
+          ) : null}
+
+          <NavigationSideControls
+            isFollowingUser={isFollowingUser}
+            onRecenter={recenterOnUser}
+            onCompass={recenterOnUser}
+            onAudioToggle={() => speak('Audio navigazione attivo.')}
+            onReport={() => speak('Segnalazione non disponibile nel prototipo.')}
+          />
+
+          <SpeedLimitBox
+            currentSpeedKmh={currentLocation?.speedKmh ?? null}
+            speedLimitKmh={visibleSpeedLimit}
+          />
+
+          <View style={styles.currentRoadChip}>
+            <Text style={styles.currentRoadText} numberOfLines={1}>
+              {currentRoadName || 'Strada senza nome'}
+            </Text>
+          </View>
 
           <NavigationBottomCard
             distanceRemainingKm={distanceRemainingKm}
@@ -574,6 +715,81 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  routeErrorCard: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 36,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 14,
+  },
+  routeErrorTitle: {
+    color: '#111',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  routeErrorText: {
+    color: '#5f6368',
+    fontSize: 14,
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+  routeErrorActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  routeErrorButton: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#f1f3f4',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  routeErrorButtonPrimary: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#3498db',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  routeErrorButtonText: {
+    color: '#202124',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  routeErrorButtonPrimaryText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  currentRoadChip: {
+    position: 'absolute',
+    left: 124,
+    right: 124,
+    bottom: 158,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 5,
+    elevation: 7,
+  },
+  currentRoadText: {
+    color: '#1167ff',
+    fontSize: 16,
+    fontWeight: '900',
   },
   topRightControls: {
     position: 'absolute',

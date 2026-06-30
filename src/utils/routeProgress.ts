@@ -1,9 +1,10 @@
 import { Coordinate, RouteInfo, RouteInstruction, RouteProgress } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { calculateDistanceBetweenCoordinates } from './geo';
+import { distancePointToSegmentMeters } from './segmentDistance';
 
 const DEFAULT_OFF_ROUTE_THRESHOLD_METERS = 120;
-const ROUTE_TUTOR_MATCH_RADIUS_METERS = 900;
+const ROUTE_TUTOR_MATCH_RADIUS_METERS = 120;
 
 export interface RouteTutorMatch {
   segment: TutorSegment;
@@ -26,9 +27,13 @@ const getScale = (latitude: number) => ({
 const getInstructionAtDistance = (
   instructions: RouteInstruction[],
   distanceTravelledKm: number
-): { current: RouteInstruction | null; next: RouteInstruction | null } => {
+): {
+  current: RouteInstruction | null;
+  next: RouteInstruction | null;
+  distanceRemainingKm: number | null;
+} => {
   if (instructions.length === 0) {
-    return { current: null, next: null };
+    return { current: null, next: null, distanceRemainingKm: null };
   }
 
   let accumulatedKm = 0;
@@ -41,6 +46,7 @@ const getInstructionAtDistance = (
       return {
         current: instruction,
         next: instructions[index + 1] ?? null,
+        distanceRemainingKm: Math.max(0, accumulatedKm + stepDistanceKm - distanceTravelledKm),
       };
     }
 
@@ -50,6 +56,7 @@ const getInstructionAtDistance = (
   return {
     current: instructions[instructions.length - 1],
     next: null,
+    distanceRemainingKm: 0,
   };
 };
 
@@ -182,7 +189,8 @@ export const getRouteProgress = (
     routeLengthKm > 0
       ? Math.max(0, route.durationMinutes * (distanceRemainingKm / routeLengthKm))
       : 0;
-  const { current, next } = getInstructionAtDistance(route.instructions, distanceTravelledKm);
+  const { current, next, distanceRemainingKm: instructionDistanceRemainingKm } =
+    getInstructionAtDistance(route.instructions, distanceTravelledKm);
 
   return {
     nearestPoint: nearest.nearestPoint,
@@ -191,6 +199,7 @@ export const getRouteProgress = (
     distanceTravelledKm,
     distanceRemainingKm,
     durationRemainingMinutes,
+    instructionDistanceRemainingKm,
     currentInstruction: current,
     nextInstruction: next,
     currentRoadName: current?.streetName || null,
@@ -224,11 +233,14 @@ export const findTutorSegmentsOnRoute = (
 
       if (!startNearest || !endNearest) return null;
 
+      const closestRoutePointToTutorMeters = route.polyline.reduce((closest, point) => {
+        return Math.min(closest, distancePointToSegmentMeters(point, startCoordinate, endCoordinate));
+      }, Number.POSITIVE_INFINITY);
       const startRadius = Math.max(segment.start_radius_meters, ROUTE_TUTOR_MATCH_RADIUS_METERS);
       const endRadius = Math.max(segment.end_radius_meters, ROUTE_TUTOR_MATCH_RADIUS_METERS);
       const isOnRoute =
-        startNearest.distanceMeters <= startRadius &&
-        endNearest.distanceMeters <= endRadius &&
+        closestRoutePointToTutorMeters <= ROUTE_TUTOR_MATCH_RADIUS_METERS &&
+        (startNearest.distanceMeters <= startRadius || endNearest.distanceMeters <= endRadius) &&
         endNearest.distanceFromStartKm > startNearest.distanceFromStartKm;
 
       if (!isOnRoute) return null;

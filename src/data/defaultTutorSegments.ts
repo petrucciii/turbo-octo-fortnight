@@ -2,6 +2,22 @@ import { TutorSegment } from '../types/tutor';
 
 export const DEFAULT_TUTOR_SEGMENTS: TutorSegment[] = [
   {
+    id: 'demo-cavin-caselle',
+    name: 'Tutor prova Cavin Caselle',
+    highway_name: 'Cavin Caselle',
+    direction: 'prova',
+    start_latitude: 45.485453,
+    start_longitude: 12.031735,
+    end_latitude: 45.488636,
+    end_longitude: 12.014756,
+    speed_limit_kmh: 50,
+    segment_length_km: 1.38,
+    start_radius_meters: 90,
+    end_radius_meters: 90,
+    is_active: true,
+    notes: 'Tutor hardcoded per test prototipo',
+  },
+  {
     id: 'demo-a4-milano-brescia-est',
     name: 'Milano-Brescia',
     highway_name: 'A4',
