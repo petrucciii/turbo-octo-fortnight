@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { searchPlaces } from '../api/googlePlaces';
+import { useLocationStore } from '../store/locationStore';
 import { useNavigationStore } from '../store/navigationStore';
 import { Place } from '../types/navigation';
 
@@ -18,6 +19,7 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
   const [results, setResults] = useState<Place[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { setDestination, setOrigin, setRoute } = useNavigationStore();
+  const { currentLocation } = useLocationStore();
   const mode: 'origin' | 'destination' = route?.params?.mode === 'origin' ? 'origin' : 'destination';
   const title = mode === 'origin' ? 'Scegli punto di partenza' : 'Cerca destinazione';
 
@@ -26,7 +28,7 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
     if (text.length > 2) {
       setIsSearching(true);
       try {
-        const places = await searchPlaces(text);
+        const places = await searchPlaces(text, currentLocation?.coordinate ?? null);
         setResults(places);
       } finally {
         setIsSearching(false);

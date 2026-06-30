@@ -4,6 +4,14 @@ import { Coordinate } from '../types/navigation';
 import { supabase } from '../api/supabaseClient';
 import { DEFAULT_TUTOR_SEGMENTS } from '../data/defaultTutorSegments';
 
+const mergeTutorSegments = (remoteSegments: TutorSegment[] = []): TutorSegment[] => {
+  const byId = new Map<string, TutorSegment>();
+  [...DEFAULT_TUTOR_SEGMENTS, ...remoteSegments].forEach((segment) => {
+    byId.set(segment.id, segment);
+  });
+  return Array.from(byId.values()).filter((segment) => segment.is_active);
+};
+
 interface TutorState {
   tutorSegments: TutorSegment[];
   activeTutorSegment: TutorSegment | null;
@@ -59,9 +67,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
         set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });
         return;
       }
-      if (data) {
-        set({ tutorSegments: data.length > 0 ? data : DEFAULT_TUTOR_SEGMENTS });
-      }
+      set({ tutorSegments: mergeTutorSegments(data ?? []) });
     } catch (e) {
       console.error('Failed to fetch tutor segments:', e);
       set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });

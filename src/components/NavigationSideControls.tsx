@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     right: 14,
-    top: 214,
+    top: 268,
     gap: 10,
   },
   button: {

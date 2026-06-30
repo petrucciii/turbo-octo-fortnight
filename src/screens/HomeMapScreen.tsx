@@ -12,6 +12,7 @@ import { TutorApproachAlert } from '../components/TutorApproachAlert';
 import { NavigationSideControls } from '../components/NavigationSideControls';
 import { SpeedLimitBox } from '../components/SpeedLimitBox';
 import { TutorCompletionToast } from '../components/TutorCompletionToast';
+import { ArrivalPrompt } from '../components/ArrivalPrompt';
 import { useLocationStore } from '../store/locationStore';
 import { useNavigationStore } from '../store/navigationStore';
 import { useTutorStore } from '../store/tutorStore';
@@ -35,6 +36,7 @@ import {
   smoothSpeedKmh,
 } from '../utils/motion';
 import { distancePointToSegmentMeters } from '../utils/segmentDistance';
+import { getManeuverRouteCue } from '../utils/routeArrows';
 
 const TUTOR_WARNING_DISTANCE_KM = 1;
 const REROUTE_COOLDOWN_MS = 15_000;
@@ -85,6 +87,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const [currentRouteProgress, setCurrentRouteProgress] = useState<RouteProgress | null>(null);
   const [tutorCompletionMessage, setTutorCompletionMessage] = useState<string | null>(null);
   const [routeTutorMatches, setRouteTutorMatches] = useState<RouteTutorMatch[]>([]);
+  const [arrivalPromptVisible, setArrivalPromptVisible] = useState(false);
   const [upcomingTutor, setUpcomingTutor] = useState<{
     match: RouteTutorMatch;
     distanceKm: number;
@@ -103,6 +106,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const lastStableHeadingRef = useRef<number | null>(null);
   const lastStableSpeedRef = useRef<number | null>(null);
   const deviceHeadingRef = useRef<number | null>(null);
+  const arrivalHandledRef = useRef(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleNavigationTickRef = useRef<(location: LocationData) => void>(() => undefined);
 
@@ -154,6 +158,62 @@ export const HomeMapScreen = ({ navigation }: any) => {
         return;
       }
 
+      const applyLocationObject = (location: Location.LocationObject): LocationData => {
+        const rawSpeed = location.coords.speed;
+        const rawHeading = location.coords.heading;
+        const coordinate = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+        const fallbackSpeed = getFallbackSpeedKmh(
+          lastMotionSampleRef.current,
+          coordinate,
+          location.timestamp
+        );
+        const gpsSpeedKmh = typeof rawSpeed === 'number' && rawSpeed >= 0 ? rawSpeed * 3.6 : null;
+        const candidateSpeed = sanitizeSpeedKmh(gpsSpeedKmh) ?? sanitizeSpeedKmh(fallbackSpeed);
+        const stableSpeed = smoothSpeedKmh(lastStableSpeedRef.current, candidateSpeed);
+        lastStableSpeedRef.current = stableSpeed;
+        const fallbackHeading = lastMotionSampleRef.current && sanitizeSpeedKmh(fallbackSpeed) !== null
+          ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
+          : null;
+        const candidateHeading =
+          stableSpeed !== null && stableSpeed >= 4
+            ? typeof rawHeading === 'number' && rawHeading >= 0
+              ? rawHeading
+              : fallbackHeading
+            : deviceHeadingRef.current ?? fallbackHeading;
+        const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading, 0.2);
+        lastStableHeadingRef.current = stableHeading;
+
+        const locData: LocationData = {
+          coordinate,
+          speedKmh: stableSpeed,
+          heading: stableHeading,
+          timestamp: location.timestamp,
+          accuracy: location.coords.accuracy,
+        };
+
+        lastMotionSampleRef.current = { coordinate, timestamp: location.timestamp };
+        useLocationStore.getState().setCurrentLocation(locData);
+        handleNavigationTickRef.current(locData);
+
+        return locData;
+      };
+
+      try {
+        const initialLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        if (isMounted) {
+          applyLocationObject(initialLocation);
+          setRecenterRequestId((value) => value + 1);
+        }
+      } catch (error) {
+        console.warn('Initial GPS position unavailable:', error);
+      }
+
       try {
         const headingSub = await Location.watchHeadingAsync((heading) => {
           const rawHeading =
@@ -195,44 +255,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
           distanceInterval: 5,
         },
         (location) => {
-          const rawSpeed = location.coords.speed;
-          const rawHeading = location.coords.heading;
-          const coordinate = {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          };
-          const fallbackSpeed = getFallbackSpeedKmh(
-            lastMotionSampleRef.current,
-            coordinate,
-            location.timestamp
-          );
-          const gpsSpeedKmh = typeof rawSpeed === 'number' && rawSpeed >= 0 ? rawSpeed * 3.6 : null;
-          const candidateSpeed = sanitizeSpeedKmh(gpsSpeedKmh) ?? sanitizeSpeedKmh(fallbackSpeed);
-          const stableSpeed = smoothSpeedKmh(lastStableSpeedRef.current, candidateSpeed);
-          lastStableSpeedRef.current = stableSpeed;
-          const fallbackHeading = lastMotionSampleRef.current && sanitizeSpeedKmh(fallbackSpeed) !== null
-            ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
-            : null;
-          const candidateHeading =
-            stableSpeed !== null && stableSpeed >= 4
-              ? typeof rawHeading === 'number' && rawHeading >= 0
-                ? rawHeading
-                : fallbackHeading
-              : deviceHeadingRef.current ?? fallbackHeading;
-          const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading, 0.2);
-          lastStableHeadingRef.current = stableHeading;
-
-          const locData: LocationData = {
-            coordinate,
-            speedKmh: stableSpeed,
-            heading: stableHeading,
-            timestamp: location.timestamp,
-            accuracy: location.coords.accuracy,
-          };
-
-          lastMotionSampleRef.current = { coordinate, timestamp: location.timestamp };
-          useLocationStore.getState().setCurrentLocation(locData);
-          handleNavigationTickRef.current(locData);
+          applyLocationObject(location);
         }
       );
 
@@ -307,9 +330,12 @@ export const HomeMapScreen = ({ navigation }: any) => {
     setRouteTutorMatches([]);
     setCurrentRouteProgress(null);
     setRouteError(null);
+    setArrivalPromptVisible(false);
     setTutorCompletionMessage(null);
     isReroutingRef.current = false;
+    arrivalHandledRef.current = false;
     resetTutorRuntime();
+    setRecenterRequestId((value) => value + 1);
   }, [clearNavigationPlan, resetTutorRuntime, setDestination, stopNavigation]);
 
   const cancelPlan = useCallback(() => {
@@ -334,6 +360,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     }
 
     resetTutorRuntime();
+    arrivalHandledRef.current = false;
     setIsFollowingUser(true);
     setRecenterRequestId((value) => value + 1);
     startNavigation();
@@ -343,6 +370,17 @@ export const HomeMapScreen = ({ navigation }: any) => {
   const stopActiveNavigation = useCallback(() => {
     resetNavigationState('stop');
   }, [resetNavigationState]);
+
+  const closeArrivalPrompt = useCallback(() => {
+    setArrivalPromptVisible(false);
+    setRecenterRequestId((value) => value + 1);
+  }, []);
+
+  const startNewDestinationAfterArrival = useCallback(() => {
+    setArrivalPromptVisible(false);
+    setRecenterRequestId((value) => value + 1);
+    navigation.navigate('SearchDestination', { mode: 'destination' });
+  }, [navigation]);
 
   const recenterOnUser = useCallback(() => {
     setIsFollowingUser(true);
@@ -573,16 +611,18 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
     handleTutorSafeTick(locData, progress);
 
-    if (progress.distanceRemainingKm <= ARRIVAL_THRESHOLD_KM) {
+    if (progress.distanceRemainingKm <= ARRIVAL_THRESHOLD_KM && !arrivalHandledRef.current) {
+      arrivalHandledRef.current = true;
       speak('Sei arrivato a destinazione.');
-      stopActiveNavigation();
+      resetNavigationState('stop');
+      setArrivalPromptVisible(true);
       return;
     }
 
     if (progress.isOffRoute) {
       void rerouteFromCurrentLocation(locData.coordinate);
     }
-  }, [handleTutorSafeTick, rerouteFromCurrentLocation, stopActiveNavigation, updateRouteProgress]);
+  }, [handleTutorSafeTick, rerouteFromCurrentLocation, resetNavigationState, updateRouteProgress]);
 
   useEffect(() => {
     handleNavigationTickRef.current = handleNavigationTick;
@@ -600,6 +640,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
     tutorStore.activeTutorSegment?.speed_limit_kmh ??
     upcomingTutor?.match.segment.speed_limit_kmh ??
     null;
+  const maneuverCue = isNavigating
+    ? getManeuverRouteCue(route, currentRouteProgress?.currentInstruction ?? null)
+    : null;
 
   return (
     <View style={styles.container}>
@@ -613,6 +656,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
         heading={currentLocation?.heading ?? null}
         isNavigating={isNavigating}
         mapType={mapType}
+        maneuverCue={maneuverCue}
         followUserLocation={isFollowingUser}
         recenterRequestId={recenterRequestId}
         onUserGesture={handleMapGesture}
@@ -722,12 +766,6 @@ export const HomeMapScreen = ({ navigation }: any) => {
             speedLimitKmh={visibleSpeedLimit}
           />
 
-          <View style={styles.currentRoadChip}>
-            <Text style={styles.currentRoadText} numberOfLines={1}>
-              {currentRoadName || 'Strada senza nome'}
-            </Text>
-          </View>
-
           <NavigationBottomCard
             distanceRemainingKm={distanceRemainingKm}
             durationRemainingMinutes={durationRemainingMinutes}
@@ -746,6 +784,13 @@ export const HomeMapScreen = ({ navigation }: any) => {
             <Text style={styles.iconText}>DEMO</Text>
           </TouchableOpacity>
         </View>
+      ) : null}
+
+      {arrivalPromptVisible ? (
+        <ArrivalPrompt
+          onNewDestination={startNewDestinationAfterArrival}
+          onClose={closeArrivalPrompt}
+        />
       ) : null}
     </View>
   );
@@ -833,30 +878,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  currentRoadChip: {
-    position: 'absolute',
-    left: 124,
-    right: 124,
-    bottom: 158,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 5,
-    elevation: 7,
-  },
-  currentRoadText: {
-    color: '#1167ff',
-    fontSize: 16,
-    fontWeight: '900',
-  },
   topRightControls: {
     position: 'absolute',
-    top: 50,
+    top: 118,
     right: 20,
     gap: 10,
   },

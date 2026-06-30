@@ -34,7 +34,7 @@ export const NavigationBottomCard: React.FC<Props> = ({
         <View style={styles.summary}>
           <Text style={styles.duration}>{formatNavigationDuration(durationRemainingMinutes)}</Text>
           <Text style={styles.details}>
-            {formatDistance(distanceRemainingKm)} · {etaString}
+            {formatDistance(distanceRemainingKm)} - {etaString}
           </Text>
         </View>
         <TouchableOpacity style={styles.exitButton} onPress={onStop}>

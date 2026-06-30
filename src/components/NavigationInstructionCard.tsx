@@ -16,14 +16,14 @@ const getManeuverIcon = (instruction: RouteInstruction | null): string => {
   const type = instruction?.maneuverType;
   const modifier = instruction?.modifier;
 
-  if (type === 'roundabout' || type === 'rotary' || type === 'exit roundabout') return '⟳';
-  if (type === 'arrive') return '●';
-  if (modifier?.includes('left')) return '↰';
-  if (modifier?.includes('right')) return '↱';
-  if (modifier === 'uturn') return '↶';
-  if (type === 'fork') return '⇆';
+  if (type === 'roundabout' || type === 'rotary' || type === 'exit roundabout') return '\u27F3';
+  if (type === 'arrive') return '\u25CF';
+  if (modifier?.includes('left')) return '\u21B0';
+  if (modifier?.includes('right')) return '\u21B1';
+  if (modifier === 'uturn') return '\u21B6';
+  if (type === 'fork') return '\u21C6';
 
-  return '↑';
+  return '\u2191';
 };
 
 const getPrimaryText = (
@@ -59,6 +59,10 @@ export const NavigationInstructionCard: React.FC<Props> = ({
     nextInstruction?.text && nextInstruction.text.trim().length > 0
       ? nextInstruction.text
       : 'Segui il percorso';
+  const instructionText =
+    instruction?.text && instruction.text.trim().length > 0
+      ? instruction.text
+      : 'Indicazione non disponibile';
 
   return (
     <View style={[styles.container, (isOffRoute || isRerouting) && styles.warningContainer]}>
@@ -68,15 +72,19 @@ export const NavigationInstructionCard: React.FC<Props> = ({
           <Text style={styles.distanceText}>{distanceText}</Text>
         </View>
         <View style={styles.textColumn}>
-          <Text style={styles.title} numberOfLines={1}>{primaryText}</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {instruction?.text || 'Indicazione non disponibile'}
+          <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+            {primaryText}
+          </Text>
+          <Text style={styles.subtitle} numberOfLines={2} ellipsizeMode="tail">
+            {instructionText}
           </Text>
         </View>
       </View>
       <View style={styles.nextBox}>
         <Text style={styles.nextLabel}>Poi</Text>
-        <Text style={styles.nextText} numberOfLines={1}>{nextText}</Text>
+        <Text style={styles.nextText} numberOfLines={1}>
+          {nextText}
+        </Text>
       </View>
     </View>
   );
@@ -85,11 +93,11 @@ export const NavigationInstructionCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 46,
-    left: 14,
-    right: 74,
-    backgroundColor: 'rgba(15,23,42,0.88)',
-    borderRadius: 18,
+    top: 44,
+    left: 18,
+    right: 18,
+    backgroundColor: 'rgba(10,18,32,0.9)',
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(56,189,248,0.24)',
@@ -103,22 +111,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(120,53,15,0.9)',
   },
   mainRow: {
-    minHeight: 72,
+    minHeight: 70,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 12,
   },
   iconColumn: {
-    width: 54,
+    width: 50,
     alignItems: 'center',
   },
   maneuverIcon: {
     color: '#38BDF8',
-    fontSize: 34,
+    fontSize: 22,
     fontWeight: '900',
-    lineHeight: 54,
+    lineHeight: 28,
   },
   distanceText: {
     color: '#F8FAFC',
@@ -128,28 +136,31 @@ const styles = StyleSheet.create({
   },
   textColumn: {
     flex: 1,
+    minWidth: 0,
   },
   title: {
     color: '#F8FAFC',
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: '800',
+    lineHeight: 22,
   },
   subtitle: {
     color: '#CBD5E1',
     fontSize: 12,
     fontWeight: '700',
-    marginTop: 4,
+    marginTop: 3,
+    lineHeight: 16,
   },
   nextBox: {
     alignSelf: 'flex-start',
-    maxWidth: '72%',
-    minHeight: 34,
+    maxWidth: '88%',
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(124,58,237,0.48)',
+    backgroundColor: 'rgba(124,58,237,0.38)',
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderBottomRightRadius: 18,
   },
   nextLabel: {

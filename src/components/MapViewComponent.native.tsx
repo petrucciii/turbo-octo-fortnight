@@ -4,7 +4,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { projectCoordinate } from '../utils/motion';
-import { getRouteDirectionArrows } from '../utils/routeArrows';
+import { ManeuverRouteCue } from '../utils/routeArrows';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -16,6 +16,7 @@ interface Props {
   heading: number | null;
   isNavigating: boolean;
   mapType: MapDisplayType;
+  maneuverCue: ManeuverRouteCue | null;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
@@ -46,11 +47,13 @@ export const MapViewComponent: React.FC<Props> = ({
   heading,
   isNavigating,
   mapType,
+  maneuverCue,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
 }) => {
   const mapRef = useRef<MapView | null>(null);
+  const hasCenteredInitialLocationRef = useRef(false);
 
   const animateToUser = (duration = 700) => {
     if (!mapRef.current || !userLocation) return;
@@ -87,6 +90,12 @@ export const MapViewComponent: React.FC<Props> = ({
     if (!isNavigating || !followUserLocation) return;
     animateToUser();
   }, [userLocation, heading, isNavigating, followUserLocation]);
+
+  useEffect(() => {
+    if (hasCenteredInitialLocationRef.current || !userLocation || route) return;
+    hasCenteredInitialLocationRef.current = true;
+    animateToUser(650);
+  }, [userLocation, route]);
 
   useEffect(() => {
     animateToUser(500);
@@ -129,16 +138,24 @@ export const MapViewComponent: React.FC<Props> = ({
               strokeWidth={5}
               zIndex={2}
             />
-            {getRouteDirectionArrows(route, 9).map((arrow) => (
-              <Marker
-                key={arrow.id}
-                coordinate={arrow.coordinate}
-                anchor={{ x: 0.5, y: 0.5 }}
+            {maneuverCue?.section && maneuverCue.section.length > 1 ? (
+              <Polyline
+                coordinates={maneuverCue.section}
+                strokeColor="#22D3EE"
+                strokeWidth={7}
                 zIndex={3}
+              />
+            ) : null}
+            {maneuverCue?.arrow ? (
+              <Marker
+                key={maneuverCue.arrow.id}
+                coordinate={maneuverCue.arrow.coordinate}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={4}
               >
-                <View style={[styles.routeArrow, { transform: [{ rotate: `${arrow.heading}deg` }] }]} />
+                <View style={[styles.routeArrow, { transform: [{ rotate: `${maneuverCue.arrow.heading}deg` }] }]} />
               </Marker>
-            ))}
+            ) : null}
           </>
         ) : null}
 
@@ -238,12 +255,12 @@ const styles = StyleSheet.create({
   routeArrow: {
     width: 0,
     height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 14,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 17,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: '#F8FAFC',
+    borderBottomColor: '#22D3EE',
   },
   tutorLabel: {
     backgroundColor: '#ff8f00',

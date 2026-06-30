@@ -64,7 +64,7 @@ export const TutorSafeCard: React.FC<Props> = ({
       {isOverLimit ? (
         <Text style={styles.warningText}>
           Rallenta in sicurezza
-          {recommendedSpeedKmh ? ` · target ${formatSpeed(recommendedSpeedKmh)} km/h` : ''}
+          {recommendedSpeedKmh ? ` - target ${formatSpeed(recommendedSpeedKmh)} km/h` : ''}
         </Text>
       ) : null}
     </View>
@@ -74,9 +74,9 @@ export const TutorSafeCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 146,
-    left: 14,
-    right: 74,
+    top: 154,
+    left: 18,
+    right: 18,
     backgroundColor: 'rgba(24,24,37,0.92)',
     borderRadius: 16,
     padding: 12,

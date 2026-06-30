@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Coordinate, MapDisplayType, RouteInfo } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 import { projectCoordinate } from '../utils/motion';
-import { getRouteDirectionArrows } from '../utils/routeArrows';
+import { ManeuverRouteCue } from '../utils/routeArrows';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -15,6 +15,7 @@ interface Props {
   heading: number | null;
   isNavigating: boolean;
   mapType: MapDisplayType;
+  maneuverCue: ManeuverRouteCue | null;
   followUserLocation: boolean;
   recenterRequestId: number;
   onUserGesture: () => void;
@@ -50,9 +51,9 @@ const getRouteArrowHtml = (heading: number): string => {
     width: 0;
     height: 0;
     transform: rotate(${heading}deg);
-    border-left: 6px solid transparent;
-    border-right: 6px solid transparent;
-    border-bottom: 14px solid #F8FAFC;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 17px solid #22D3EE;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
   "></div>`;
 };
@@ -67,6 +68,7 @@ export const MapViewComponent: React.FC<Props> = ({
   heading,
   isNavigating,
   mapType,
+  maneuverCue,
   followUserLocation,
   recenterRequestId,
   onUserGesture,
@@ -77,6 +79,7 @@ export const MapViewComponent: React.FC<Props> = ({
   const routeArrowMarkersRef = useRef<any[]>([]);
   const routeLayerRef = useRef<any>(null);
   const routeOutlineLayerRef = useRef<any>(null);
+  const maneuverCueLayerRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
   const baseLayerRef = useRef<any>(null);
   const labelLayerRef = useRef<any>(null);
@@ -238,6 +241,10 @@ export const MapViewComponent: React.FC<Props> = ({
     }
     routeArrowMarkersRef.current.forEach((marker) => map.removeLayer(marker));
     routeArrowMarkersRef.current = [];
+    if (maneuverCueLayerRef.current) {
+      map.removeLayer(maneuverCueLayerRef.current);
+      maneuverCueLayerRef.current = null;
+    }
 
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
@@ -251,25 +258,37 @@ export const MapViewComponent: React.FC<Props> = ({
         weight: 5,
         opacity: 0.95,
       }).addTo(map);
-      routeArrowMarkersRef.current = getRouteDirectionArrows(route, 9).map((arrow) => {
+
+      if (maneuverCue?.section && maneuverCue.section.length > 1) {
+        maneuverCueLayerRef.current = LLib.polyline(
+          maneuverCue.section.map((point) => [point.latitude, point.longitude]),
+          {
+            color: '#22D3EE',
+            weight: 7,
+            opacity: 0.92,
+          }
+        ).addTo(map);
+      }
+
+      if (maneuverCue?.arrow) {
         const icon = LLib.divIcon({
           className: '',
-          html: getRouteArrowHtml(arrow.heading),
-          iconSize: [16, 18],
-          iconAnchor: [8, 9],
+          html: getRouteArrowHtml(maneuverCue.arrow.heading),
+          iconSize: [18, 20],
+          iconAnchor: [9, 10],
         });
-        return LLib.marker([arrow.coordinate.latitude, arrow.coordinate.longitude], {
+        routeArrowMarkersRef.current = [LLib.marker([maneuverCue.arrow.coordinate.latitude, maneuverCue.arrow.coordinate.longitude], {
           icon,
           interactive: false,
           zIndexOffset: 650,
-        }).addTo(map);
-      });
+        }).addTo(map)];
+      }
 
       if (!isNavigating) {
         map.fitBounds(routeLayerRef.current.getBounds(), { padding: [70, 70] });
       }
     }
-  }, [route, isNavigating, LLib]);
+  }, [route, maneuverCue, isNavigating, LLib]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;

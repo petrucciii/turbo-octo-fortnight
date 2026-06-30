@@ -2,7 +2,7 @@ import { TutorSegment } from '../types/tutor';
 
 export const DEFAULT_TUTOR_SEGMENTS: TutorSegment[] = [
   {
-    id: 'demo-cavin-caselle',
+    id: 'tutor-cavin-caselle-demo',
     name: 'Tutor prova Cavin Caselle',
     highway_name: 'Cavin Caselle',
     direction: 'prova',
