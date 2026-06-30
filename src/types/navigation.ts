@@ -26,4 +26,21 @@ export interface RouteInstruction {
   text: string;
   distanceKm: number;
   durationMinutes: number;
+  streetName?: string;
+  maneuverType?: string;
+  modifier?: string;
+  location?: Coordinate;
+}
+
+export interface RouteProgress {
+  nearestPoint: Coordinate;
+  nearestSegmentIndex: number;
+  distanceFromRouteMeters: number;
+  distanceTravelledKm: number;
+  distanceRemainingKm: number;
+  durationRemainingMinutes: number;
+  currentInstruction: RouteInstruction | null;
+  nextInstruction: RouteInstruction | null;
+  currentRoadName: string | null;
+  isOffRoute: boolean;
 }

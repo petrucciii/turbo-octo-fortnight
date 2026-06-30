@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { TutorSegment, TutorStatus, TutorSession } from '../types/tutor';
 import { Coordinate } from '../types/navigation';
 import { supabase } from '../api/supabaseClient';
+import { DEFAULT_TUTOR_SEGMENTS } from '../data/defaultTutorSegments';
 
 interface TutorState {
   tutorSegments: TutorSegment[];
@@ -42,6 +43,11 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   hasSpokenReturnSafeWarning: false,
 
   loadTutorSegments: async () => {
+    if (!supabase) {
+      set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('tutor_segments')
@@ -50,13 +56,15 @@ export const useTutorStore = create<TutorState>((set, get) => ({
         
       if (error) {
         console.error('Error loading tutor segments:', error);
+        set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });
         return;
       }
       if (data) {
-        set({ tutorSegments: data });
+        set({ tutorSegments: data.length > 0 ? data : DEFAULT_TUTOR_SEGMENTS });
       }
     } catch (e) {
       console.error('Failed to fetch tutor segments:', e);
+      set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });
     }
   },
 
@@ -103,11 +111,16 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       result_status: state.tutorStatus
     };
 
-    // Salva su supabase
-    try {
-      await supabase.from('tutor_sessions').insert(session);
-    } catch (e) {
-      console.error('Failed to save tutor session:', e);
+    if (supabase) {
+      try {
+        await supabase.from('tutor_sessions').insert({
+          ...session,
+          entry_time: new Date(session.entry_time).toISOString(),
+          exit_time: session.exit_time ? new Date(session.exit_time).toISOString() : null,
+        });
+      } catch (e) {
+        console.error('Failed to save tutor session:', e);
+      }
     }
 
     set({

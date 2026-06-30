@@ -1,26 +1,49 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, FlatList, Text, TouchableOpacity, SafeAreaView } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { searchPlaces } from '../api/googlePlaces';
 import { useNavigationStore } from '../store/navigationStore';
 import { Place } from '../types/navigation';
 
-export const SearchDestinationScreen = ({ navigation }: any) => {
+export const SearchDestinationScreen = ({ navigation, route }: any) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
-  const { setDestination } = useNavigationStore();
+  const [isSearching, setIsSearching] = useState(false);
+  const { setDestination, setOrigin, setRoute } = useNavigationStore();
+  const mode: 'origin' | 'destination' = route?.params?.mode === 'origin' ? 'origin' : 'destination';
+  const title = mode === 'origin' ? 'Scegli punto di partenza' : 'Cerca destinazione';
 
   const handleSearch = async (text: string) => {
     setQuery(text);
     if (text.length > 2) {
-      const places = await searchPlaces(text);
-      setResults(places);
+      setIsSearching(true);
+      try {
+        const places = await searchPlaces(text);
+        setResults(places);
+      } finally {
+        setIsSearching(false);
+      }
     } else {
       setResults([]);
+      setIsSearching(false);
     }
   };
 
   const handleSelect = (place: Place) => {
-    setDestination(place);
+    setRoute(null);
+    if (mode === 'origin') {
+      setOrigin(place);
+    } else {
+      setDestination(place);
+    }
     navigation.goBack();
   };
 
@@ -32,7 +55,7 @@ export const SearchDestinationScreen = ({ navigation }: any) => {
         </TouchableOpacity>
         <TextInput
           style={styles.input}
-          placeholder="Cerca destinazione..."
+          placeholder={title}
           placeholderTextColor="#8e8e93"
           value={query}
           onChangeText={handleSearch}
@@ -48,6 +71,19 @@ export const SearchDestinationScreen = ({ navigation }: any) => {
             <Text style={styles.resultAddress}>{item.address}</Text>
           </TouchableOpacity>
         )}
+        ListHeaderComponent={
+          isSearching ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#3498db" />
+              <Text style={styles.loadingText}>Ricerca in corso...</Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          query.length > 2 && !isSearching ? (
+            <Text style={styles.emptyText}>Nessun risultato trovato.</Text>
+          ) : null
+        }
       />
     </SafeAreaView>
   );
@@ -94,6 +130,21 @@ const styles = StyleSheet.create({
   },
   resultAddress: {
     color: '#8e8e93',
+    fontSize: 14,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 10,
+  },
+  loadingText: {
+    color: '#8e8e93',
+    fontSize: 14,
+  },
+  emptyText: {
+    color: '#8e8e93',
+    padding: 16,
     fontSize: 14,
   }
 });

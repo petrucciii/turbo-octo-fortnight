@@ -1,22 +1,31 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatDistance, formatDuration } from '../utils/formatting';
 import { Place, RouteInfo } from '../types/navigation';
 
 interface Props {
+  origin: Place;
   destination: Place;
   route: RouteInfo;
-  hasTutorSegments: boolean;
+  tutorSegmentsCount: number;
   onStart: () => void;
   onCancel: () => void;
 }
 
-export const RoutePreviewCard: React.FC<Props> = ({ destination, route, hasTutorSegments, onStart, onCancel }) => {
+export const RoutePreviewCard: React.FC<Props> = ({
+  origin,
+  destination,
+  route,
+  tutorSegmentsCount,
+  onStart,
+  onCancel,
+}) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{destination.name}</Text>
-      <Text style={styles.address}>{destination.address}</Text>
-      
+      <Text style={styles.address} numberOfLines={2}>{destination.address}</Text>
+      <Text style={styles.origin} numberOfLines={1}>Partenza: {origin.name}</Text>
+
       <View style={styles.statsContainer}>
         <View style={styles.statBox}>
           <Text style={styles.statValue}>{formatDistance(route.distanceKm)}</Text>
@@ -28,13 +37,20 @@ export const RoutePreviewCard: React.FC<Props> = ({ destination, route, hasTutor
         </View>
       </View>
 
-      {hasTutorSegments && (
+      {route.instructions[0] ? (
+        <View style={styles.instructionBox}>
+          <Text style={styles.instructionLabel}>Prima indicazione</Text>
+          <Text style={styles.instructionText}>{route.instructions[0].text}</Text>
+        </View>
+      ) : null}
+
+      {tutorSegmentsCount > 0 ? (
         <View style={styles.tutorWarning}>
           <Text style={styles.tutorWarningText}>
-            Zone a velocità media rilevate lungo il percorso.
+            {tutorSegmentsCount} tratto Tutor rilevato lungo il percorso.
           </Text>
         </View>
-      )}
+      ) : null}
 
       <View style={styles.buttonsRow}>
         <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
@@ -55,32 +71,37 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: '#1c1c1e',
-    padding: 24,
-    paddingBottom: 40,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    padding: 22,
+    paddingBottom: 38,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#fff',
     marginBottom: 4,
   },
   address: {
     fontSize: 14,
     color: '#8e8e93',
-    marginBottom: 20,
+    marginBottom: 6,
+  },
+  origin: {
+    color: '#c5c5c7',
+    fontSize: 13,
+    marginBottom: 18,
   },
   statsContainer: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   statBox: {
     flex: 1,
   },
   statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#3498db',
   },
   statLabel: {
@@ -88,17 +109,36 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     marginTop: 2,
   },
+  instructionBox: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  instructionLabel: {
+    color: '#8e8e93',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  instructionText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   tutorWarning: {
     backgroundColor: 'rgba(52, 152, 219, 0.1)',
     borderLeftWidth: 4,
     borderLeftColor: '#3498db',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   tutorWarningText: {
     color: '#3498db',
     fontSize: 14,
+    fontWeight: '700',
   },
   buttonsRow: {
     flexDirection: 'row',
@@ -115,7 +155,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   startButton: {
     flex: 2,
@@ -127,6 +167,6 @@ const styles = StyleSheet.create({
   startButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-  }
+    fontWeight: '800',
+  },
 });

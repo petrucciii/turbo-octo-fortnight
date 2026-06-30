@@ -1,23 +1,61 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Coordinate, RouteInfo } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
 
 interface Props {
   userLocation: Coordinate | null;
+  origin: Coordinate | null;
   route: RouteInfo | null;
   tutorSegments: TutorSegment[];
   activeTutorSegment: TutorSegment | null;
   destination: Coordinate | null;
+  heading: number | null;
+  isNavigating: boolean;
 }
 
-// Leaflet-based web map implementation
+const getUserMarkerHtml = (heading: number | null): string => {
+  const rotation = heading ?? 0;
+  return `<div style="
+    width: 28px;
+    height: 28px;
+    position: relative;
+    transform: rotate(${rotation}deg);
+  ">
+    <div style="
+      position: absolute;
+      left: 8px;
+      top: -2px;
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 13px solid #4285f4;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.45));
+    "></div>
+    <div style="
+      position: absolute;
+      left: 5px;
+      top: 5px;
+      width: 18px;
+      height: 18px;
+      background: #4285f4;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 14px rgba(66,133,244,.65);
+    "></div>
+  </div>`;
+};
+
 export const MapViewComponent: React.FC<Props> = ({
   userLocation,
+  origin,
   route,
   tutorSegments,
   activeTutorSegment,
   destination,
+  heading,
+  isNavigating,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -27,10 +65,8 @@ export const MapViewComponent: React.FC<Props> = ({
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [LLib, setLLib] = useState<any>(null);
 
-  // Load Leaflet dynamically
   useEffect(() => {
     const loadLeaflet = async () => {
-      // Inject Leaflet CSS
       if (!document.getElementById('leaflet-css')) {
         const link = document.createElement('link');
         link.id = 'leaflet-css';
@@ -40,7 +76,6 @@ export const MapViewComponent: React.FC<Props> = ({
         document.head.appendChild(link);
       }
 
-      // Inject Leaflet JS
       if (!(window as any).L) {
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement('script');
@@ -59,165 +94,159 @@ export const MapViewComponent: React.FC<Props> = ({
     loadLeaflet().catch((err) => console.error('Failed to load Leaflet:', err));
   }, []);
 
-  // Initialize map
   useEffect(() => {
     if (!leafletLoaded || !LLib || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    const defaultLat = userLocation?.latitude || 41.9028;
-    const defaultLng = userLocation?.longitude || 12.4964;
+    const defaultLat = userLocation?.latitude || origin?.latitude || 41.9028;
+    const defaultLng = userLocation?.longitude || origin?.longitude || 12.4964;
 
     const map = LLib.map(mapContainerRef.current, {
       zoomControl: false,
     }).setView([defaultLat, defaultLng], 13);
 
-    // Dark themed tile layer (CartoDB Dark Matter)
     LLib.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
       subdomains: 'abcd',
       maxZoom: 20,
     }).addTo(map);
 
-    // Zoom control in basso a destra
     LLib.control.zoom({ position: 'bottomright' }).addTo(map);
-
     mapInstanceRef.current = map;
 
-    // Force resize after mount
     setTimeout(() => map.invalidateSize(), 200);
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [leafletLoaded, LLib]);
+  }, [leafletLoaded, LLib, origin, userLocation]);
 
-  // Update user location marker
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib || !userLocation) return;
 
     const map = mapInstanceRef.current;
+    const icon = LLib.divIcon({
+      className: '',
+      html: getUserMarkerHtml(heading),
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
 
     if (userMarkerRef.current) {
       userMarkerRef.current.setLatLng([userLocation.latitude, userLocation.longitude]);
+      userMarkerRef.current.setIcon(icon);
     } else {
-      const pulsingIcon = LLib.divIcon({
-        className: '',
-        html: `<div style="
-          width: 18px; height: 18px;
-          background: #4285F4;
-          border: 3px solid #fff;
-          border-radius: 50%;
-          box-shadow: 0 0 12px rgba(66, 133, 244, 0.6);
-        "></div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
-
       userMarkerRef.current = LLib.marker([userLocation.latitude, userLocation.longitude], {
-        icon: pulsingIcon,
+        icon,
         zIndexOffset: 1000,
       }).addTo(map);
     }
 
-    map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), { animate: true });
-  }, [userLocation, LLib]);
+    if (isNavigating) {
+      map.setView([userLocation.latitude, userLocation.longitude], Math.max(map.getZoom(), 17), {
+        animate: true,
+      });
+    } else if (!route) {
+      map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), { animate: true });
+    }
+  }, [userLocation, heading, isNavigating, route, LLib]);
 
-  // Draw route polyline
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
-    // Remove old route
     if (routeLayerRef.current) {
       map.removeLayer(routeLayerRef.current);
       routeLayerRef.current = null;
     }
 
     if (route && route.polyline.length > 0) {
-      const latlngs = route.polyline.map((p) => [p.latitude, p.longitude]);
+      const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
       routeLayerRef.current = LLib.polyline(latlngs, {
         color: '#3498db',
-        weight: 5,
-        opacity: 0.8,
+        weight: 6,
+        opacity: 0.88,
       }).addTo(map);
 
-      // Fit bounds to route
-      map.fitBounds(routeLayerRef.current.getBounds(), { padding: [50, 50] });
+      if (!isNavigating) {
+        map.fitBounds(routeLayerRef.current.getBounds(), { padding: [60, 60] });
+      }
     }
-  }, [route, LLib]);
+  }, [route, isNavigating, LLib]);
 
-  // Draw tutor segments and destination markers
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
-    // Clear old markers
-    markersRef.current.forEach((m) => map.removeLayer(m));
+    markersRef.current.forEach((marker) => map.removeLayer(marker));
     markersRef.current = [];
 
-    // Destination marker
+    if (origin) {
+      const originIcon = LLib.divIcon({
+        className: '',
+        html: `<div style="width:22px;height:22px;background:#2ecc71;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(46,204,113,.6);"></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      markersRef.current.push(
+        LLib.marker([origin.latitude, origin.longitude], { icon: originIcon })
+          .bindPopup('Partenza')
+          .addTo(map)
+      );
+    }
+
     if (destination) {
       const destIcon = LLib.divIcon({
         className: '',
-        html: `<div style="
-          width: 24px; height: 24px;
-          background: #e74c3c;
-          border: 3px solid #fff;
-          border-radius: 50%;
-          box-shadow: 0 0 8px rgba(231, 76, 60, 0.6);
-          display: flex; align-items: center; justify-content: center;
-        "><div style="width:6px;height:6px;background:#fff;border-radius:50%"></div></div>`,
+        html: `<div style="width:24px;height:24px;background:#e74c3c;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(231,76,60,.6);display:flex;align-items:center;justify-content:center;"><div style="width:6px;height:6px;background:#fff;border-radius:50%"></div></div>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12],
       });
-
-      const m = LLib.marker([destination.latitude, destination.longitude], { icon: destIcon })
-        .bindPopup('Destinazione')
-        .addTo(map);
-      markersRef.current.push(m);
+      markersRef.current.push(
+        LLib.marker([destination.latitude, destination.longitude], { icon: destIcon })
+          .bindPopup('Destinazione')
+          .addTo(map)
+      );
     }
 
-    // Tutor segment markers
-    tutorSegments.forEach((seg) => {
-      const isActive = activeTutorSegment?.id === seg.id;
+    tutorSegments.forEach((segment) => {
+      const isActive = activeTutorSegment?.id === segment.id;
+      const color = isActive ? '#2ecc71' : '#f39c12';
+      const start = [segment.start_latitude, segment.start_longitude];
+      const end = [segment.end_latitude, segment.end_longitude];
+
+      markersRef.current.push(
+        LLib.polyline([start, end], {
+          color,
+          weight: isActive ? 6 : 4,
+          opacity: 0.9,
+          dashArray: isActive ? undefined : '10 8',
+        }).addTo(map)
+      );
 
       const startIcon = LLib.divIcon({
         className: '',
-        html: `<div style="
-          width: 14px; height: 14px;
-          background: ${isActive ? '#2ecc71' : '#3498db'};
-          border: 2px solid #fff;
-          border-radius: 50%;
-          box-shadow: 0 0 6px ${isActive ? 'rgba(46, 204, 113, 0.5)' : 'rgba(52, 152, 219, 0.5)'};
-        "></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        html: `<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       });
-
       const endIcon = LLib.divIcon({
         className: '',
-        html: `<div style="
-          width: 14px; height: 14px;
-          background: ${isActive ? '#e74c3c' : '#3498db'};
-          border: 2px solid #fff;
-          border-radius: 50%;
-          box-shadow: 0 0 6px ${isActive ? 'rgba(231, 76, 60, 0.5)' : 'rgba(52, 152, 219, 0.5)'};
-        "></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        html: `<div style="width:16px;height:16px;background:#e74c3c;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
       });
 
-      const sm = LLib.marker([seg.start_latitude, seg.start_longitude], { icon: startIcon })
-        .bindPopup(`Inizio Tutor: ${seg.name}`)
-        .addTo(map);
-
-      const em = LLib.marker([seg.end_latitude, seg.end_longitude], { icon: endIcon })
-        .bindPopup(`Fine Tutor: ${seg.name}`)
-        .addTo(map);
-
-      markersRef.current.push(sm, em);
+      markersRef.current.push(
+        LLib.marker(start, { icon: startIcon })
+          .bindPopup(`Inizio Tutor: ${segment.name}`)
+          .addTo(map),
+        LLib.marker(end, { icon: endIcon })
+          .bindPopup(`Fine Tutor: ${segment.name}`)
+          .addTo(map)
+      );
     });
-  }, [tutorSegments, activeTutorSegment, destination, LLib]);
+  }, [origin, tutorSegments, activeTutorSegment, destination, LLib]);
 
   if (!leafletLoaded) {
     return (
@@ -248,7 +277,11 @@ export const MapViewComponent: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   loading: {
     justifyContent: 'center',

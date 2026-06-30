@@ -83,6 +83,7 @@ export const DemoModeScreen = ({ navigation }: any) => {
               currentSpeedKmh={speed}
               recommendedSpeedKmh={recSpeed}
               distanceRemainingKm={distRemaining}
+              timeRemainingMinutes={speed > 0 ? (distRemaining / speed) * 60 : null}
               status={status}
             />
           </View>
