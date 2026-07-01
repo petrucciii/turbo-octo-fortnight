@@ -16,15 +16,19 @@ export const UserLocationLayer = React.memo(function UserLocationLayer({
   coordinate,
   heading,
 }: Props) {
+  const safeHeading = getSafeHeading(heading);
+
   return (
     <Marker
-      identifier="user-location-permanent"
+      identifier="user-location-marker"
       coordinate={coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
       zIndex={99999}
-      tracksViewChanges
+      flat
+      rotation={safeHeading}
+      tracksViewChanges={false}
     >
-      <UserPositionArrow heading={getSafeHeading(heading)} />
+      <UserPositionArrow heading={0} />
     </Marker>
   );
 });

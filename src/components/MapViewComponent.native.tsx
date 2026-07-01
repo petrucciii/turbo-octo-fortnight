@@ -3,13 +3,14 @@ import { StyleSheet, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { RouteInfo, Coordinate, MapDisplayType } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
-import { projectCoordinate, smoothHeading } from '../utils/motion';
+import { smoothHeading } from '../utils/motion';
 import { ManeuverRouteCue } from '../utils/routeArrows';
 import type { RouteTutorMatch } from '../utils/routeProgress';
 import { UserLocationLayer } from './map/UserLocationLayer';
 import { RouteOverlayLayer } from './map/RouteOverlayLayer';
 import { TutorOverlayLayer } from './map/TutorOverlayLayer';
 import { ManeuverOverlayLayer } from './map/ManeuverOverlayLayer';
+import { useMapCameraController } from './map/useMapCameraController';
 
 interface Props {
   userLocation: Coordinate | null;
@@ -38,11 +39,6 @@ const customMapStyle = [
   { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
   { featureType: 'water', stylers: [{ color: '#4f8faa' }] },
 ];
-
-const getCameraCenter = (coordinate: Coordinate, heading: number | null): Coordinate => {
-  if (heading === null) return coordinate;
-  return projectCoordinate(coordinate, heading, 72);
-};
 
 const isValidCoordinate = (coordinate: Coordinate | null): coordinate is Coordinate => {
   return Boolean(
@@ -73,27 +69,11 @@ export const MapViewComponent: React.FC<Props> = ({
   onUserGesture,
 }) => {
   const mapRef = useRef<MapView | null>(null);
-  const hasCenteredInitialLocationRef = useRef(false);
   const [lastRenderableHeading, setLastRenderableHeading] = useState<number | null>(
     typeof heading === 'number' && Number.isFinite(heading) ? heading : null
   );
   const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : null;
   const safeHeading = getSafeHeading(lastRenderableHeading, 0);
-  const cameraHeading = lastRenderableHeading;
-
-  const animateToUser = (duration = 700) => {
-    if (!mapRef.current || !visibleUserLocation) return;
-
-    mapRef.current.animateCamera(
-      {
-        center: getCameraCenter(visibleUserLocation, cameraHeading),
-        pitch: isNavigating ? 58 : 0,
-        heading: isNavigating ? safeHeading : 0,
-        zoom: isNavigating ? 18 : 15,
-      },
-      { duration }
-    );
-  };
 
   useEffect(() => {
     if (typeof heading === 'number' && Number.isFinite(heading)) {
@@ -101,37 +81,17 @@ export const MapViewComponent: React.FC<Props> = ({
     }
   }, [heading]);
 
-  useEffect(() => {
-    if (!mapRef.current || !route || route.polyline.length < 2 || isNavigating) return;
-
-    const coordinates = [
-      ...route.polyline,
-      ...(origin ? [origin] : []),
-      ...(destination ? [destination] : []),
-    ];
-
-    setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coordinates, {
-        edgePadding: { top: 130, right: 52, bottom: 300, left: 52 },
-        animated: true,
-      });
-    }, 250);
-  }, [route, origin, destination, isNavigating]);
-
-  useEffect(() => {
-    if (!isNavigating || !followUserLocation) return;
-    animateToUser();
-  }, [visibleUserLocation, safeHeading, isNavigating, followUserLocation]);
-
-  useEffect(() => {
-    if (hasCenteredInitialLocationRef.current || !visibleUserLocation || route) return;
-    hasCenteredInitialLocationRef.current = true;
-    animateToUser(650);
-  }, [visibleUserLocation, route]);
-
-  useEffect(() => {
-    animateToUser(500);
-  }, [recenterRequestId]);
+  useMapCameraController({
+    mapRef,
+    userLocation: visibleUserLocation,
+    heading: lastRenderableHeading,
+    route,
+    origin,
+    destination,
+    isNavigating,
+    followUserLocation,
+    recenterRequestId,
+  });
 
   return (
     <View style={styles.container}>
@@ -147,6 +107,7 @@ export const MapViewComponent: React.FC<Props> = ({
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        // The app uses the custom UserLocationLayer as the only user-position marker.
         showsUserLocation={false}
         showsCompass={false}
         showsMyLocationButton={false}
