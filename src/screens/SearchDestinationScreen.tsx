@@ -1,44 +1,165 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { searchPlaces } from '../api/googlePlaces';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  isNominatimNetworkError,
+  isNominatimRateLimitError,
+  searchPlaces,
+} from '../api/googlePlaces';
 import { useLocationStore } from '../store/locationStore';
 import { useNavigationStore } from '../store/navigationStore';
-import { Place } from '../types/navigation';
+import { Coordinate, Place } from '../types/navigation';
+
+type SearchStatus =
+  | 'idle'
+  | 'typing'
+  | 'searching'
+  | 'success'
+  | 'empty'
+  | 'rate-limited'
+  | 'network-error';
+
+const SEARCH_DEBOUNCE_MS = 650;
+
+const normalizeQuery = (query: string): string => query.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const getRoundedCoordinate = (coordinate: Coordinate | null): string => {
+  if (!coordinate) return 'no-location';
+  return `${coordinate.latitude.toFixed(2)},${coordinate.longitude.toFixed(2)}`;
+};
+
+const getSearchKey = (query: string, coordinate: Coordinate | null): string => {
+  return `${normalizeQuery(query)}-${getRoundedCoordinate(coordinate)}`;
+};
+
+const getStatusMessage = (status: SearchStatus, hasQuery: boolean): string | null => {
+  if (!hasQuery || status === 'idle' || status === 'success' || status === 'searching') return null;
+  if (status === 'typing') return 'Scrivi almeno 3 lettere.';
+  if (status === 'empty') return 'Nessun risultato trovato vicino a te.';
+  if (status === 'rate-limited') return 'Ricerca temporaneamente limitata. Attendi qualche secondo e riprova.';
+  if (status === 'network-error') return 'Problema di connessione. Riprova.';
+  return null;
+};
 
 export const SearchDestinationScreen = ({ navigation, route }: any) => {
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const searchRequestIdRef = useRef(0);
+  const lastSearchedKeyRef = useRef<string | null>(null);
   const { setDestination, setOrigin, setRoute } = useNavigationStore();
   const { currentLocation, lastKnownLocation } = useLocationStore();
   const mode: 'origin' | 'destination' = route?.params?.mode === 'origin' ? 'origin' : 'destination';
   const title = mode === 'origin' ? 'Scegli punto di partenza' : 'Cerca destinazione';
 
-  const handleSearch = async (text: string) => {
-    setQuery(text);
-    if (text.length > 2) {
-      setIsSearching(true);
-      try {
-        const searchLocation = currentLocation?.coordinate ?? lastKnownLocation?.coordinate ?? null;
-        const places = await searchPlaces(text, searchLocation);
-        setResults(places);
-      } finally {
-        setIsSearching(false);
-      }
-    } else {
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    searchRequestIdRef.current += 1;
+    lastSearchedKeyRef.current = null;
+    setErrorMessage(null);
+
+    if (trimmedQuery.length === 0) {
       setResults([]);
       setIsSearching(false);
+      setSearchStatus('idle');
+      return;
     }
-  };
+
+    if (trimmedQuery.length < 3) {
+      setResults([]);
+      setIsSearching(false);
+      setSearchStatus('typing');
+      return;
+    }
+
+    setSearchStatus('typing');
+  }, [query]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [query]);
+
+  useEffect(() => {
+    const trimmedQuery = debouncedQuery.trim();
+
+    if (trimmedQuery.length === 0) {
+      searchRequestIdRef.current += 1;
+      lastSearchedKeyRef.current = null;
+      setResults([]);
+      setIsSearching(false);
+      setSearchStatus('idle');
+      setErrorMessage(null);
+      return;
+    }
+
+    if (trimmedQuery.length < 3) {
+      searchRequestIdRef.current += 1;
+      lastSearchedKeyRef.current = null;
+      setResults([]);
+      setIsSearching(false);
+      setSearchStatus('typing');
+      setErrorMessage(null);
+      return;
+    }
+
+    const searchLocation = currentLocation?.coordinate ?? lastKnownLocation?.coordinate ?? null;
+    const searchKey = getSearchKey(trimmedQuery, searchLocation);
+    if (searchKey === lastSearchedKeyRef.current) return;
+
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
+    lastSearchedKeyRef.current = searchKey;
+
+    const runSearch = async () => {
+      setIsSearching(true);
+      setSearchStatus('searching');
+      setErrorMessage(null);
+
+      try {
+        const places = await searchPlaces(trimmedQuery, searchLocation);
+        if (searchRequestIdRef.current !== requestId) return;
+
+        setResults(places);
+        setSearchStatus(places.length > 0 ? 'success' : 'empty');
+      } catch (error) {
+        if (searchRequestIdRef.current !== requestId) return;
+
+        setResults([]);
+        lastSearchedKeyRef.current = null;
+        if (isNominatimRateLimitError(error)) {
+          setSearchStatus('rate-limited');
+          setErrorMessage('Ricerca temporaneamente limitata. Attendi qualche secondo e riprova.');
+        } else if (isNominatimNetworkError(error)) {
+          setSearchStatus('network-error');
+          setErrorMessage('Problema di connessione. Riprova.');
+        } else {
+          setSearchStatus('network-error');
+          setErrorMessage('Errore ricerca. Riprova.');
+        }
+      } finally {
+        if (searchRequestIdRef.current === requestId) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    void runSearch();
+  }, [debouncedQuery, currentLocation?.coordinate, lastKnownLocation?.coordinate]);
 
   const handleSelect = (place: Place) => {
     setRoute(null);
@@ -58,6 +179,8 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
     return `${place.address} - ${distanceText}`;
   };
 
+  const statusMessage = errorMessage ?? getStatusMessage(searchStatus, query.trim().length > 0);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -69,13 +192,14 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
           placeholder={title}
           placeholderTextColor="#8e8e93"
           value={query}
-          onChangeText={handleSearch}
+          onChangeText={setQuery}
           autoFocus
         />
       </View>
       <FlatList
         data={results}
         keyExtractor={item => item.id}
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
             <Text style={styles.resultName}>{item.name}</Text>
@@ -91,8 +215,8 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
           ) : null
         }
         ListEmptyComponent={
-          query.length > 2 && !isSearching ? (
-            <Text style={styles.emptyText}>Nessun risultato trovato.</Text>
+          !isSearching && statusMessage ? (
+            <Text style={styles.emptyText}>{statusMessage}</Text>
           ) : null
         }
       />
@@ -157,5 +281,6 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     padding: 16,
     fontSize: 14,
+    lineHeight: 20,
   }
 });
