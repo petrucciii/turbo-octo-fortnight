@@ -7,6 +7,54 @@ import { ManeuverRouteCue } from '../utils/routeArrows';
 import type { RouteTutorMatch } from '../utils/routeProgress';
 import { splitRouteByTutorMatches } from '../utils/routeGeometry';
 
+// Leaflet is loaded from CDN at runtime for the Expo web build. These minimal
+// structural types keep that dynamic boundary explicit without bundling Leaflet.
+type LeafletLatLng = [number, number];
+type LeafletBounds = unknown;
+
+interface LeafletLayer {
+  addTo(map: LeafletMapInstance): this;
+}
+
+interface LeafletIcon {}
+
+interface LeafletMarker extends LeafletLayer {
+  bindPopup(text: string): this;
+  setIcon(icon: LeafletIcon): void;
+  setLatLng(latLng: LeafletLatLng): void;
+}
+
+interface LeafletPolyline extends LeafletLayer {
+  getBounds(): LeafletBounds;
+}
+
+interface LeafletMapInstance {
+  fitBounds(bounds: LeafletBounds, options?: { padding?: [number, number] }): void;
+  getZoom(): number;
+  invalidateSize(): void;
+  on(event: string, handler: () => void): void;
+  remove(): void;
+  removeLayer(layer: LeafletLayer): void;
+  setView(latLng: LeafletLatLng, zoom: number, options?: { animate?: boolean; duration?: number }): this;
+}
+
+interface LeafletLibrary {
+  control: {
+    zoom(options: { position: string }): LeafletLayer;
+  };
+  divIcon(options: { className: string; html: string; iconSize: [number, number]; iconAnchor: [number, number] }): LeafletIcon;
+  map(container: HTMLDivElement, options: { zoomControl: boolean }): LeafletMapInstance;
+  marker(latLng: LeafletLatLng, options?: { icon?: LeafletIcon; interactive?: boolean; zIndexOffset?: number }): LeafletMarker;
+  polyline(latLngs: LeafletLatLng[], options: { color: string; weight: number; opacity: number }): LeafletPolyline;
+  tileLayer(url: string, options: Record<string, unknown>): LeafletLayer;
+}
+
+declare global {
+  interface Window {
+    L?: LeafletLibrary;
+  }
+}
+
 interface Props {
   userLocation: Coordinate | null;
   origin: Coordinate | null;
@@ -22,6 +70,8 @@ interface Props {
   overlayResetKey: number;
   followUserLocation: boolean;
   recenterRequestId: number;
+  followAnimationDurationMs?: number;
+  followThrottleMs?: number;
   onUserGesture: () => void;
 }
 
@@ -178,21 +228,26 @@ export const MapViewComponent: React.FC<Props> = ({
   overlayResetKey,
   followUserLocation,
   recenterRequestId,
+  followAnimationDurationMs,
+  followThrottleMs = 0,
   onUserGesture,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const routeArrowMarkersRef = useRef<any[]>([]);
-  const routeLayerRefs = useRef<any[]>([]);
-  const routeOutlineLayerRef = useRef<any>(null);
-  const maneuverCueLayerRef = useRef<any>(null);
-  const userMarkerRef = useRef<any>(null);
-  const baseLayerRef = useRef<any>(null);
-  const labelLayerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<LeafletMapInstance | null>(null);
+  const markersRef = useRef<LeafletMarker[]>([]);
+  const routeArrowMarkersRef = useRef<LeafletMarker[]>([]);
+  const routeLayerRefs = useRef<LeafletPolyline[]>([]);
+  const routeOutlineLayerRef = useRef<LeafletPolyline | null>(null);
+  const maneuverCueLayerRef = useRef<LeafletPolyline | null>(null);
+  const userMarkerRef = useRef<LeafletMarker | null>(null);
+  const baseLayerRef = useRef<LeafletLayer | null>(null);
+  const labelLayerRef = useRef<LeafletLayer | null>(null);
   const isNavigatingRef = useRef(isNavigating);
+  const onUserGestureRef = useRef(onUserGesture);
+  const lastFollowCenterAtRef = useRef(0);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [LLib, setLLib] = useState<any>(null);
+  const [LLib, setLLib] = useState<LeafletLibrary | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [lastRenderableUserLocation, setLastRenderableUserLocation] = useState<Coordinate | null>(
     isValidCoordinate(userLocation) ? userLocation : null
   );
@@ -202,16 +257,17 @@ export const MapViewComponent: React.FC<Props> = ({
   const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
   const visibleHeading = lastRenderableHeading;
 
-  const centerOnUser = (animate = true) => {
+  const centerOnUser = (animate = true, durationMs?: number) => {
     if (!mapInstanceRef.current || !visibleUserLocation) return;
     const map = mapInstanceRef.current;
     const center = visibleHeading !== null ? projectCoordinate(visibleUserLocation, visibleHeading, 62) : visibleUserLocation;
     map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
-      animate,
+      animate: animate && durationMs !== 0,
+      ...(typeof durationMs === 'number' && durationMs > 0 ? { duration: durationMs / 1000 } : {}),
     });
   };
 
-  const clearRouteLayers = () => {
+  const clearRouteShapeLayers = () => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
@@ -221,12 +277,23 @@ export const MapViewComponent: React.FC<Props> = ({
       map.removeLayer(routeOutlineLayerRef.current);
       routeOutlineLayerRef.current = null;
     }
+  };
+
+  const clearManeuverLayers = () => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
     if (maneuverCueLayerRef.current) {
       map.removeLayer(maneuverCueLayerRef.current);
       maneuverCueLayerRef.current = null;
     }
     routeArrowMarkersRef.current.forEach((marker) => map.removeLayer(marker));
     routeArrowMarkersRef.current = [];
+  };
+
+  const clearRouteLayers = () => {
+    clearRouteShapeLayers();
+    clearManeuverLayers();
   };
 
   const clearNavigationLayers = () => {
@@ -241,6 +308,10 @@ export const MapViewComponent: React.FC<Props> = ({
   useEffect(() => {
     isNavigatingRef.current = isNavigating;
   }, [isNavigating]);
+
+  useEffect(() => {
+    onUserGestureRef.current = onUserGesture;
+  }, [onUserGesture]);
 
   useEffect(() => {
     if (isValidCoordinate(userLocation)) {
@@ -265,7 +336,7 @@ export const MapViewComponent: React.FC<Props> = ({
         document.head.appendChild(link);
       }
 
-      if (!(window as any).L) {
+      if (!window.L) {
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement('script');
           script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -276,7 +347,7 @@ export const MapViewComponent: React.FC<Props> = ({
         });
       }
 
-      setLLib((window as any).L);
+      setLLib(window.L ?? null);
       setLeafletLoaded(true);
     };
 
@@ -294,22 +365,24 @@ export const MapViewComponent: React.FC<Props> = ({
     }).setView([defaultLat, defaultLng], 15);
 
     map.on('dragstart zoomstart', () => {
-      if (isNavigatingRef.current) onUserGesture();
+      if (isNavigatingRef.current) onUserGestureRef.current();
     });
 
     LLib.control.zoom({ position: 'bottomright' }).addTo(map);
     mapInstanceRef.current = map;
+    setMapReady(true);
 
     setTimeout(() => map.invalidateSize(), 200);
 
     return () => {
+      setMapReady(false);
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [leafletLoaded, LLib, onUserGesture]);
+  }, [leafletLoaded, LLib]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib) return;
+    if (!mapReady || !mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
     if (baseLayerRef.current) {
@@ -347,10 +420,10 @@ export const MapViewComponent: React.FC<Props> = ({
         }
       ).addTo(map);
     }
-  }, [mapType, LLib]);
+  }, [mapReady, mapType, LLib]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib || !visibleUserLocation) return;
+    if (!mapReady || !mapInstanceRef.current || !LLib || !visibleUserLocation) return;
 
     const map = mapInstanceRef.current;
     const icon = LLib.divIcon({
@@ -371,29 +444,47 @@ export const MapViewComponent: React.FC<Props> = ({
     }
 
     if (isNavigating && followUserLocation) {
-      centerOnUser(true);
+      const now = Date.now();
+      if (!followThrottleMs || now - lastFollowCenterAtRef.current >= followThrottleMs) {
+        lastFollowCenterAtRef.current = now;
+        centerOnUser(followAnimationDurationMs !== 0, followAnimationDurationMs);
+      }
     } else if (!route) {
       map.setView([visibleUserLocation.latitude, visibleUserLocation.longitude], map.getZoom(), { animate: true });
     }
-  }, [visibleUserLocation, visibleHeading, isNavigating, followUserLocation, route, LLib]);
+  }, [
+    visibleUserLocation,
+    visibleHeading,
+    isNavigating,
+    followUserLocation,
+    followAnimationDurationMs,
+    followThrottleMs,
+    route,
+    LLib,
+    mapReady,
+  ]);
 
   useEffect(() => {
+    if (!mapReady) return;
     centerOnUser(true);
-  }, [recenterRequestId]);
+  }, [mapReady, recenterRequestId]);
 
   useEffect(() => {
+    if (!mapReady) return;
     clearNavigationLayers();
     centerOnUser(true);
-  }, [overlayResetKey]);
+  }, [mapReady, overlayResetKey]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib) return;
+    if (!mapReady || !mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
-    clearRouteLayers();
+    // Route geometry changes rarely. Keep it separate from maneuver cues so
+    // demo movement does not recreate the whole blue/purple path every frame.
+    clearRouteShapeLayers();
 
     if (route && route.polyline.length > 0) {
-      const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
+      const latlngs: LeafletLatLng[] = route.polyline.map((point) => [point.latitude, point.longitude]);
       routeOutlineLayerRef.current = LLib.polyline(latlngs, {
         color: 'rgba(8,13,28,.58)',
         weight: 7,
@@ -408,44 +499,56 @@ export const MapViewComponent: React.FC<Props> = ({
           {
             color: isTutorSection ? (isActiveTutorSection ? '#22D3EE' : '#F97316') : '#7C3AED',
             weight: isTutorSection ? 5.5 : 5,
-            opacity: 0.96,
-          }
-        ).addTo(map);
+          opacity: 0.96,
+        }
+      ).addTo(map);
       });
-
-      if (maneuverCue?.section && maneuverCue.section.length > 1) {
-        maneuverCueLayerRef.current = LLib.polyline(
-          maneuverCue.section.map((point) => [point.latitude, point.longitude]),
-          {
-            color: '#FBBF24',
-            weight: 8,
-            opacity: 0.92,
-          }
-        ).addTo(map);
-      }
-
-      if (maneuverCue?.arrow) {
-        const icon = LLib.divIcon({
-          className: '',
-          html: getRouteArrowHtml(maneuverCue.arrow.heading),
-          iconSize: [30, 30],
-          iconAnchor: [15, 15],
-        });
-        routeArrowMarkersRef.current = [LLib.marker([maneuverCue.arrow.coordinate.latitude, maneuverCue.arrow.coordinate.longitude], {
-          icon,
-          interactive: false,
-          zIndexOffset: 650,
-        }).addTo(map)];
-      }
 
       if (!isNavigating && routeOutlineLayerRef.current) {
         map.fitBounds(routeOutlineLayerRef.current.getBounds(), { padding: [70, 70] });
       }
+    } else {
+      clearManeuverLayers();
     }
-  }, [route, tutorMatches, activeTutorSegment, maneuverCue, isNavigating, overlayResetKey, LLib]);
+  }, [mapReady, route, tutorMatches, activeTutorSegment, isNavigating, overlayResetKey, LLib]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib) return;
+    if (!mapReady || !mapInstanceRef.current || !LLib) return;
+    const map = mapInstanceRef.current;
+
+    // The yellow maneuver cue follows current progress and can update often.
+    clearManeuverLayers();
+
+    if (!route) return;
+
+    if (maneuverCue?.section && maneuverCue.section.length > 1) {
+      maneuverCueLayerRef.current = LLib.polyline(
+        maneuverCue.section.map((point) => [point.latitude, point.longitude]),
+        {
+          color: '#FBBF24',
+          weight: 8,
+          opacity: 0.92,
+        }
+      ).addTo(map);
+    }
+
+    if (maneuverCue?.arrow) {
+      const icon = LLib.divIcon({
+        className: '',
+        html: getRouteArrowHtml(maneuverCue.arrow.heading),
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      });
+      routeArrowMarkersRef.current = [LLib.marker([maneuverCue.arrow.coordinate.latitude, maneuverCue.arrow.coordinate.longitude], {
+        icon,
+        interactive: false,
+        zIndexOffset: 650,
+      }).addTo(map)];
+    }
+  }, [mapReady, route, maneuverCue, overlayResetKey, LLib]);
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !LLib) return;
     const map = mapInstanceRef.current;
 
     markersRef.current.forEach((marker) => map.removeLayer(marker));
@@ -482,8 +585,8 @@ export const MapViewComponent: React.FC<Props> = ({
     tutorSegments.forEach((segment) => {
       const isActive = activeTutorSegment?.id === segment.id;
       const color = isActive ? '#22D3EE' : '#F97316';
-      const start = [segment.start_latitude, segment.start_longitude];
-      const end = [segment.end_latitude, segment.end_longitude];
+      const start: LeafletLatLng = [segment.start_latitude, segment.start_longitude];
+      const end: LeafletLatLng = [segment.end_latitude, segment.end_longitude];
 
       const startIcon = LLib.divIcon({
         className: '',
@@ -507,7 +610,7 @@ export const MapViewComponent: React.FC<Props> = ({
           .addTo(map)
       );
     });
-  }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, overlayResetKey, LLib]);
+  }, [mapReady, origin, tutorSegments, activeTutorSegment, destination, isNavigating, overlayResetKey, LLib]);
 
   if (!leafletLoaded) {
     return (
@@ -521,7 +624,7 @@ export const MapViewComponent: React.FC<Props> = ({
   return (
     <View style={styles.container}>
       <div
-        ref={mapContainerRef as any}
+        ref={mapContainerRef}
         style={{
           width: '100%',
           height: '100%',

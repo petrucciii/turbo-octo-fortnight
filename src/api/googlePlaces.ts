@@ -12,6 +12,17 @@ type CachedSearch = {
   results: Place[];
 };
 
+interface NominatimSearchItem {
+  place_id?: string | number;
+  lat?: string;
+  lon?: string;
+  display_name?: string;
+  name?: string;
+  address?: {
+    country_code?: string;
+  };
+}
+
 const searchCache = new Map<string, CachedSearch>();
 let nominatimBlockedUntil = 0;
 let lastNominatimRequestAt = 0;
@@ -85,7 +96,7 @@ const getDistanceKm = (place: Place, userLocation: Coordinate | null): number | 
   );
 };
 
-const isItalianResult = (item: any): boolean => {
+const isItalianResult = (item: NominatimSearchItem): boolean => {
   const countryCode = item?.address?.country_code;
   if (typeof countryCode === 'string') return countryCode.toLowerCase() === 'it';
 
@@ -93,15 +104,18 @@ const isItalianResult = (item: any): boolean => {
   return displayName.includes('italia') || displayName.includes('italy');
 };
 
-const toPlace = (item: any, userLocation: Coordinate | null): Place | null => {
-  const latitude = parseFloat(item.lat);
-  const longitude = parseFloat(item.lon);
+const toPlace = (item: NominatimSearchItem, userLocation: Coordinate | null): Place | null => {
+  const latitude = Number.parseFloat(item.lat ?? '');
+  const longitude = Number.parseFloat(item.lon ?? '');
   if (!isValidCoordinate(latitude, longitude) || !isItalianResult(item)) return null;
 
   const displayName = typeof item.display_name === 'string' ? item.display_name : 'Risultato senza nome';
+  const name = typeof item.name === 'string' && item.name.trim().length > 0
+    ? item.name
+    : displayName.split(',')[0] || 'Luogo senza nome';
   const place: Place = {
     id: item.place_id?.toString() ?? `${latitude}-${longitude}`,
-    name: item.name || displayName.split(',')[0] || 'Luogo senza nome',
+    name,
     address: displayName,
     location: { latitude, longitude },
   };
@@ -123,6 +137,7 @@ const getFetchHeaders = (): HeadersInit => {
 };
 
 const waitForNominatimSlot = async (): Promise<void> => {
+  // Nominatim asks clients to avoid bursty traffic; queue requests in one lane.
   requestThrottleQueue = requestThrottleQueue.then(async () => {
     const now = Date.now();
     const elapsed = now - lastNominatimRequestAt;
@@ -142,7 +157,7 @@ const fetchNominatim = async (
   viewbox: string,
   bounded: boolean,
   limit = 12
-): Promise<any[]> => {
+): Promise<NominatimSearchItem[]> => {
   if (isNominatimBlocked()) {
     throw new NominatimRateLimitError();
   }
@@ -180,10 +195,12 @@ const fetchNominatim = async (
     throw new NominatimNetworkError(`NOMINATIM_HTTP_${response.status}`);
   }
 
-  const data = await response.json();
+  const data: unknown = await response.json();
   if (!Array.isArray(data)) throw new NominatimInvalidResponseError();
 
-  return data;
+  return data.filter((item): item is NominatimSearchItem => {
+    return typeof item === 'object' && item !== null;
+  });
 };
 
 const uniqueByIdOrLocation = (places: Place[]): Place[] => {
@@ -209,7 +226,7 @@ const sortByDistanceThenName = (places: Place[]): Place[] => {
   });
 };
 
-const buildPlaces = (items: any[], userLocation: Coordinate | null): Place[] => {
+const buildPlaces = (items: NominatimSearchItem[], userLocation: Coordinate | null): Place[] => {
   return items
     .map((item) => toPlace(item, userLocation))
     .filter((place: Place | null): place is Place => place !== null);

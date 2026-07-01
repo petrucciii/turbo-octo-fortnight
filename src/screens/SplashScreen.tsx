@@ -1,7 +1,11 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/routes';
 
-export const SplashScreen = ({ navigation }: any) => {
+type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
+
+export const SplashScreen = ({ navigation }: Props) => {
   useEffect(() => {
     setTimeout(() => {
       navigation.replace('Onboarding');

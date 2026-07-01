@@ -27,6 +27,8 @@ interface Props {
   overlayResetKey: number;
   followUserLocation: boolean;
   recenterRequestId: number;
+  followAnimationDurationMs?: number;
+  followThrottleMs?: number;
   onUserGesture: () => void;
 }
 
@@ -64,16 +66,29 @@ export const MapViewComponent: React.FC<Props> = ({
   isNavigating,
   mapType,
   maneuverCue,
+  overlayResetKey,
   followUserLocation,
   recenterRequestId,
+  followAnimationDurationMs,
+  followThrottleMs,
   onUserGesture,
 }) => {
   const mapRef = useRef<MapView | null>(null);
+  const [lastRenderableUserLocation, setLastRenderableUserLocation] = useState<Coordinate | null>(
+    isValidCoordinate(userLocation) ? userLocation : null
+  );
   const [lastRenderableHeading, setLastRenderableHeading] = useState<number | null>(
     typeof heading === 'number' && Number.isFinite(heading) ? heading : null
   );
-  const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : null;
+  const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
   const safeHeading = getSafeHeading(lastRenderableHeading, 0);
+
+  useEffect(() => {
+    if (isValidCoordinate(userLocation)) {
+      // Keep the arrow visible across navigation resets or brief GPS gaps.
+      setLastRenderableUserLocation(userLocation);
+    }
+  }, [userLocation?.latitude, userLocation?.longitude]);
 
   useEffect(() => {
     if (typeof heading === 'number' && Number.isFinite(heading)) {
@@ -91,6 +106,8 @@ export const MapViewComponent: React.FC<Props> = ({
     isNavigating,
     followUserLocation,
     recenterRequestId,
+    followAnimationDurationMs,
+    followThrottleMs,
   });
 
   return (
@@ -118,6 +135,7 @@ export const MapViewComponent: React.FC<Props> = ({
         }}
       >
         <RouteOverlayLayer
+          key={`route-overlay-${overlayResetKey}`}
           route={route}
           origin={origin}
           destination={destination}
@@ -127,11 +145,15 @@ export const MapViewComponent: React.FC<Props> = ({
         />
 
         <TutorOverlayLayer
+          key={`tutor-overlay-${overlayResetKey}`}
           tutorSegments={tutorSegments}
           activeTutorSegment={activeTutorSegment}
         />
 
-        <ManeuverOverlayLayer maneuverCue={maneuverCue} />
+        <ManeuverOverlayLayer
+          key={`maneuver-overlay-${overlayResetKey}`}
+          maneuverCue={maneuverCue}
+        />
 
         {visibleUserLocation ? (
           <UserLocationLayer

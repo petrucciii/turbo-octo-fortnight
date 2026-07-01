@@ -24,6 +24,8 @@ const getScale = (latitude: number) => ({
   lon: 111_320 * Math.cos((latitude * Math.PI) / 180),
 });
 
+// Instructions from OSRM are step lengths, not absolute distances. Convert the
+// travelled route distance back into the current and next maneuver.
 const getInstructionAtDistance = (
   instructions: RouteInstruction[],
   distanceTravelledKm: number
@@ -125,6 +127,8 @@ export const findNearestPointOnRoute = (
     const referenceLatitude = (start.latitude + end.latitude + coordinate.latitude) / 3;
     const scale = getScale(referenceLatitude);
 
+    // Project tiny route segments to a local meter grid; this keeps the
+    // nearest-point math simple without needing a full GIS library.
     const startX = start.longitude * scale.lon;
     const startY = start.latitude * scale.lat;
     const endX = end.longitude * scale.lon;
@@ -233,6 +237,8 @@ export const findTutorSegmentsOnRoute = (
 
       if (!startNearest || !endNearest) return null;
 
+      // A Tutor segment is considered relevant only when its physical line is
+      // close to the route and the projected start/end are ordered forward.
       const closestRoutePointToTutorMeters = route.polyline.reduce((closest, point) => {
         return Math.min(closest, distancePointToSegmentMeters(point, startCoordinate, endCoordinate));
       }, Number.POSITIVE_INFINITY);

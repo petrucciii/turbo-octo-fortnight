@@ -1,8 +1,12 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleProp, ViewStyle } from 'react-native';
+
+type RangeInputStyle = React.CSSProperties & {
+  WebkitAppearance?: React.CSSProperties['appearance'];
+};
 
 interface Props {
-  style?: any;
+  style?: StyleProp<ViewStyle>;
   minimumValue?: number;
   maximumValue?: number;
   value?: number;
@@ -12,7 +16,8 @@ interface Props {
   thumbTintColor?: string;
 }
 
-// Web-compatible slider using HTML range input
+// The native slider package does not render consistently on web, so this
+// component keeps the same prop shape while delegating to an HTML range input.
 const WebSlider: React.FC<Props> = ({
   style,
   minimumValue = 0,
@@ -23,7 +28,18 @@ const WebSlider: React.FC<Props> = ({
   maximumTrackTintColor = '#333',
   thumbTintColor = '#fff',
 }) => {
-  const percentage = ((value - minimumValue) / (maximumValue - minimumValue)) * 100;
+  const range = maximumValue - minimumValue;
+  const percentage = range > 0 ? ((value - minimumValue) / range) * 100 : 0;
+  const inputStyle: RangeInputStyle = {
+    width: '100%',
+    height: 40,
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    background: `linear-gradient(to right, ${minimumTrackTintColor} 0%, ${minimumTrackTintColor} ${percentage}%, ${maximumTrackTintColor} ${percentage}%, ${maximumTrackTintColor} 100%)`,
+    borderRadius: 8,
+    outline: 'none',
+    cursor: 'pointer',
+  };
 
   return (
     <View style={style}>
@@ -34,16 +50,7 @@ const WebSlider: React.FC<Props> = ({
         value={value}
         step={1}
         onChange={(e) => onValueChange?.(parseFloat(e.target.value))}
-        style={{
-          width: '100%',
-          height: 40,
-          appearance: 'none' as any,
-          WebkitAppearance: 'none' as any,
-          background: `linear-gradient(to right, ${minimumTrackTintColor} 0%, ${minimumTrackTintColor} ${percentage}%, ${maximumTrackTintColor} ${percentage}%, ${maximumTrackTintColor} 100%)`,
-          borderRadius: 8,
-          outline: 'none',
-          cursor: 'pointer',
-        }}
+        style={inputStyle}
       />
       <style>{`
         input[type="range"]::-webkit-slider-thumb {

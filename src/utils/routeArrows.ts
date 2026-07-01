@@ -30,6 +30,8 @@ const IMPORTANT_MANEUVER_TYPES = [
   'exit rotary',
 ];
 
+// Keep the yellow cue for decisions that need visual emphasis. Straight
+// continuation steps are intentionally ignored to avoid noisy overlays.
 const isImportantManeuver = (instruction: RouteInstruction | null | undefined): boolean => {
   if (!instruction) return false;
   const type = instruction.maneuverType?.toLowerCase().trim() || '';
@@ -79,6 +81,7 @@ export const getManeuverRouteCue = (
     /rotatoria|rotonda/i.test(instruction.text ?? '');
   const beforeKm = isRoundabout ? 0.055 : 0.04;
   const afterKm = isRoundabout ? 0.12 : 0.075;
+  // Roundabouts need a slightly longer section so the exit direction is clear.
   const section = getPolylineSectionByDistance(
     route.polyline,
     maneuverDistanceKm - beforeKm,

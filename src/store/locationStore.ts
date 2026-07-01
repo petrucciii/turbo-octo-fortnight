@@ -29,6 +29,8 @@ export const useLocationStore = create<LocationState>((set) => ({
   locationPermission: null,
   setCurrentLocation: (location) => set((state) => {
     const validHeading = getValidHeading(location.heading);
+    // GPS heading often disappears at low speed; keep the last valid heading so
+    // the position arrow does not snap back to north.
     const safeHeading = validHeading ?? state.lastValidHeading;
 
     return {
@@ -47,6 +49,8 @@ export const useLocationStore = create<LocationState>((set) => ({
   }),
   setHeading: (heading) => set((state) => {
     const validHeading = getValidHeading(heading);
+    // Compass updates can arrive between GPS samples and should refresh both
+    // current and fallback locations.
     const safeHeading = validHeading ?? state.lastValidHeading;
 
     return {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MapViewComponent } from '../components/MapViewComponent';
 import { SearchBar } from '../components/SearchBar';
 import { RoutePreviewCard } from '../components/RoutePreviewCard';
@@ -37,6 +38,7 @@ import {
 } from '../utils/motion';
 import { distancePointToSegmentMeters } from '../utils/segmentDistance';
 import { getContextualManeuverRouteCue } from '../utils/routeArrows';
+import type { RootStackParamList } from '../types/routes';
 
 const TUTOR_WARNING_DISTANCE_KM = 1;
 const REROUTE_COOLDOWN_MS = 15_000;
@@ -61,7 +63,9 @@ const isValidLocationData = (location: LocationData | null | undefined): locatio
   );
 };
 
-export const HomeMapScreen = ({ navigation }: any) => {
+type Props = NativeStackScreenProps<RootStackParamList, 'HomeMap'>;
+
+export const HomeMapScreen = ({ navigation }: Props) => {
   const {
     currentLocation,
     lastKnownLocation,
@@ -176,6 +180,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
         return;
       }
 
+      // Convert raw Expo Location samples into the stable app shape used by
+      // navigation, speed UI, heading smoothing and Tutor Safe checks.
       const applyLocationObject = (location: Location.LocationObject): LocationData => {
         const rawSpeed = location.coords.speed;
         const rawHeading = location.coords.heading;
@@ -348,6 +354,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [tutorStore]);
 
   const resetNavigationOnly = useCallback((mode: 'stop' | 'clear') => {
+    // One cleanup path keeps "Esci", arrival, cancel and new destination flows
+    // in sync: remove route overlays but keep the location store untouched.
     routeRequestIdRef.current += 1;
 
     if (mode === 'stop') {
@@ -489,6 +497,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, []);
 
   const handleTutorSafeTick = useCallback((locData: LocationData, progress: RouteProgress) => {
+    // Tutor Safe is a small state machine layered on route progress: warn,
+    // enter segment, update average speed, then close the segment once exited.
     const tutorState = useTutorStore.getState();
     const matches = routeTutorMatchesRef.current;
     const now = Date.now();
@@ -628,6 +638,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [endTutorSession]);
 
   const handleNavigationTick = useCallback((locData: LocationData) => {
+    // Every GPS/heading update funnels through here so UI, reroute and Tutor
+    // state all see the same route-progress snapshot.
     const navState = useNavigationStore.getState();
     if (!navState.isNavigating || !navState.route || !navState.destination) return;
 
@@ -665,6 +677,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
     handleNavigationTickRef.current = handleNavigationTick;
   }, [handleNavigationTick]);
 
+  // The marker should remain visible after navigation cleanup and during short
+  // GPS pauses, so the UI can fall back to the last known location.
   const visibleLocationData =
     currentLocation ??
     lastKnownLocation;

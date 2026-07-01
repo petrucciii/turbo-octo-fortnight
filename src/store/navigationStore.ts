@@ -13,7 +13,7 @@ interface NavigationState {
   nextInstruction: string | null;
   currentRoadName: string | null;
   isOffRoute: boolean;
-  
+
   setOrigin: (place: Place | null) => void;
   setDestination: (place: Place | null) => void;
   setRoute: (route: RouteInfo | null) => void;
@@ -49,11 +49,11 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     if (route) {
       const eta = new Date();
       eta.setMinutes(eta.getMinutes() + route.durationMinutes);
-      set({ 
-        route, 
-        distanceRemainingKm: route.distanceKm, 
+      set({
+        route,
+        distanceRemainingKm: route.distanceKm,
         durationRemainingMinutes: route.durationMinutes,
-        eta 
+        eta,
       });
     } else {
       set({
@@ -68,13 +68,13 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       });
     }
   },
-  
+
   startNavigation: () => {
     const firstInstruction = get().route?.instructions[0]?.text ?? 'Procedi verso la destinazione';
     set({ isNavigating: true, currentInstruction: firstInstruction });
   },
-  
-  stopNavigation: () => set({ 
+
+  stopNavigation: () => set({
     isNavigating: false,
     route: null,
     origin: null,
@@ -118,7 +118,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       nextInstruction,
       currentRoadName,
       isOffRoute,
-      eta
+      eta,
     });
-  }
+  },
 }));

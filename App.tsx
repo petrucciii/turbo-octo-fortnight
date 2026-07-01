@@ -9,8 +9,9 @@ import { TutorSummaryScreen } from './src/screens/TutorSummaryScreen';
 import { DemoModeScreen } from './src/screens/DemoModeScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatusBar } from 'expo-status-bar';
+import type { RootStackParamList } from './src/types/routes';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (

@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/routes';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
 const pages = [
   {
@@ -16,7 +20,7 @@ const pages = [
   }
 ];
 
-export const OnboardingScreen = ({ navigation }: any) => {
+export const OnboardingScreen = ({ navigation }: Props) => {
   const [currentPage, setCurrentPage] = useState(0);
 
   const handleNext = () => {

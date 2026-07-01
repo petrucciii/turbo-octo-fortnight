@@ -13,6 +13,8 @@ const areSameCoordinate = (a: Coordinate, b: Coordinate): boolean => {
   return Math.abs(a.latitude - b.latitude) < 0.000001 && Math.abs(a.longitude - b.longitude) < 0.000001;
 };
 
+// Distance-indexed helpers let map overlays split a route without depending on
+// the exact polyline vertex that OSRM happened to return.
 export const buildCumulativeRouteDistancesKm = (polyline: Coordinate[]): number[] => {
   const cumulative = [0];
 
@@ -120,6 +122,8 @@ export const splitRouteByTutorMatches = (
   const sections: RouteRenderSection[] = [];
   let cursorKm = 0;
 
+  // Walk from origin to destination, alternating normal route sections with
+  // highlighted Tutor sections. Overlapping matches are clipped by cursorKm.
   sortedMatches.forEach((match) => {
     const startKm = Math.max(cursorKm, Math.min(routeLengthKm, match.startDistanceKm));
     const endKm = Math.max(startKm, Math.min(routeLengthKm, match.endDistanceKm));

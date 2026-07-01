@@ -26,7 +26,6 @@ export const UserLocationLayer = React.memo(function UserLocationLayer({
       zIndex={99999}
       flat
       rotation={safeHeading}
-      tracksViewChanges={false}
     >
       <UserPositionArrow heading={0} />
     </Marker>

@@ -4,6 +4,8 @@ import { Coordinate } from '../types/navigation';
 import { supabase } from '../api/supabaseClient';
 import { DEFAULT_TUTOR_SEGMENTS } from '../data/defaultTutorSegments';
 
+// Remote data can override bundled demo rows by id, while local defaults keep
+// the app usable when Supabase is not configured or the network is unavailable.
 const mergeTutorSegments = (remoteSegments: TutorSegment[] = []): TutorSegment[] => {
   const byId = new Map<string, TutorSegment>();
   [...DEFAULT_TUTOR_SEGMENTS, ...remoteSegments].forEach((segment) => {
@@ -25,10 +27,15 @@ interface TutorState {
   hasSpokenEntryWarning: boolean;
   hasSpokenOverLimitWarning: boolean;
   hasSpokenReturnSafeWarning: boolean;
-  
+
   loadTutorSegments: () => Promise<void>;
   startTutorSession: (segment: TutorSegment, entryLocation: Coordinate, entryTime: number) => void;
-  updateTutorSession: (distanceTravelledKm: number, averageSpeedKmh: number, recommendedSpeedKmh: number | null, tutorStatus: TutorStatus) => void;
+  updateTutorSession: (
+    distanceTravelledKm: number,
+    averageSpeedKmh: number,
+    recommendedSpeedKmh: number | null,
+    tutorStatus: TutorStatus
+  ) => void;
   endTutorSession: (exitLocation: Coordinate, exitTime: number) => Promise<TutorSession | null>;
   setSpokenEntryWarning: (val: boolean) => void;
   setSpokenOverLimitWarning: (val: boolean) => void;
@@ -61,7 +68,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
         .from('tutor_segments')
         .select('*')
         .eq('is_active', true);
-        
+
       if (error) {
         console.error('Error loading tutor segments:', error);
         set({ tutorSegments: DEFAULT_TUTOR_SEGMENTS });
@@ -75,6 +82,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   },
 
   startTutorSession: (segment, entryLocation, entryTime) => {
+    // Session state starts clean so spoken warnings fire once per Tutor segment.
     set({
       activeTutorSegment: segment,
       tutorSessionActive: true,
@@ -95,7 +103,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       distanceTravelledKm,
       averageSpeedKmh,
       recommendedSpeedKmh,
-      tutorStatus
+      tutorStatus,
     });
   },
 
@@ -114,11 +122,12 @@ export const useTutorStore = create<TutorState>((set, get) => ({
       speed_limit_kmh: state.activeTutorSegment.speed_limit_kmh,
       average_speed_kmh: state.averageSpeedKmh,
       recommended_speed_kmh: state.recommendedSpeedKmh || undefined,
-      result_status: state.tutorStatus
+      result_status: state.tutorStatus,
     };
 
     if (supabase) {
       try {
+        // Persistence is best-effort: navigation must keep working offline.
         await supabase.from('tutor_sessions').insert({
           ...session,
           entry_time: new Date(session.entry_time).toISOString(),
@@ -146,7 +155,7 @@ export const useTutorStore = create<TutorState>((set, get) => ({
   setSpokenEntryWarning: (val) => set({ hasSpokenEntryWarning: val }),
   setSpokenOverLimitWarning: (val) => set({ hasSpokenOverLimitWarning: val }),
   setSpokenReturnSafeWarning: (val) => set({ hasSpokenReturnSafeWarning: val }),
-  
+
   reset: () => set({
     activeTutorSegment: null,
     tutorSessionActive: false,
@@ -159,5 +168,5 @@ export const useTutorStore = create<TutorState>((set, get) => ({
     hasSpokenEntryWarning: false,
     hasSpokenOverLimitWarning: false,
     hasSpokenReturnSafeWarning: false,
-  })
+  }),
 }));

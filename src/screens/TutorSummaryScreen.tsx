@@ -1,9 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTutorStore } from '../store/tutorStore';
-import { formatSpeed, formatDistance } from '../utils/formatting';
+import { formatSpeed } from '../utils/formatting';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/routes';
 
-export const TutorSummaryScreen = ({ route, navigation }: any) => {
+type Props = NativeStackScreenProps<RootStackParamList, 'TutorSummary'>;
+
+export const TutorSummaryScreen = ({ route, navigation }: Props) => {
   const { session } = route.params;
 
   const handleClose = () => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MapViewComponent } from '../components/MapViewComponent';
 import { NavigationBottomCard } from '../components/NavigationBottomCard';
 import { NavigationSideControls } from '../components/NavigationSideControls';
@@ -14,6 +15,7 @@ import { calculateDistanceBetweenCoordinates } from '../utils/geo';
 import { calculateBearing } from '../utils/motion';
 import { findTutorSegmentsOnRoute, getRouteLengthKm, getRouteProgress } from '../utils/routeProgress';
 import { getContextualManeuverRouteCue } from '../utils/routeArrows';
+import type { RootStackParamList } from '../types/routes';
 
 const DEMO_SEGMENT =
   DEFAULT_TUTOR_SEGMENTS.find((segment) => segment.name === 'Tutor prova Cavin Caselle') ??
@@ -24,6 +26,9 @@ const DEMO_TUTOR_START: Coordinate = { latitude: 45.485453, longitude: 12.031735
 const DEMO_TUTOR_END: Coordinate = { latitude: 45.488636, longitude: 12.014756 };
 const DEMO_TICK_MS = 180;
 const DEMO_SIM_STEP_SECONDS = 1;
+// Keep the original demo pace while splitting motion into frame-sized updates.
+const DEMO_TIME_SCALE = DEMO_SIM_STEP_SECONDS / (DEMO_TICK_MS / 1000);
+const DEMO_MAX_FRAME_MS = 80;
 const DEMO_EXPLANATION_VISIBLE_MS = 4300;
 
 const DEMO_POLYLINE: Coordinate[] = [
@@ -218,9 +223,7 @@ const getDemoExplanation = ({
   };
 };
 
-interface Props {
-  navigation: any;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'DemoMode'>;
 
 export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const route = useMemo(() => getDemoRoute(), []);
@@ -244,6 +247,14 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const hasDemoOverLimitRef = useRef(false);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explanationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const demoDynamicsRef = useRef({
+    recommendedSpeedKmh: null as number | null,
+    routeDistanceKm: route.distanceKm,
+    tutorEndKm: 0,
+    tutorStartKm: 0,
+    tutorStatus: 'safe' as TutorStatus,
+  });
 
   const tutorStartKm = tutorMatch?.startDistanceKm ?? 0.7;
   const tutorEndKm = tutorMatch?.endDistanceKm ?? Math.min(route.distanceKm, tutorStartKm + 1.3);
@@ -300,24 +311,58 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const explanationPhaseKey = `${explanation.title}-${tutorStatus}-${tutorCompletedRef.current ? 'done' : 'run'}`;
 
   useEffect(() => {
+    demoDynamicsRef.current = {
+      recommendedSpeedKmh,
+      routeDistanceKm: route.distanceKm,
+      tutorEndKm,
+      tutorStartKm,
+      tutorStatus,
+    };
+  }, [recommendedSpeedKmh, route.distanceKm, tutorEndKm, tutorStartKm, tutorStatus]);
+
+  useEffect(() => {
     if (!isRunning) return undefined;
 
-    const interval = setInterval(() => {
-      setElapsedSeconds((seconds) => seconds + DEMO_SIM_STEP_SECONDS);
+    let lastFrameAt: number | null = null;
+
+    // requestAnimationFrame makes marker/route progress continuous; the
+    // simulated clock is scaled so the scenario duration stays familiar.
+    const step = (frameAt: number) => {
+      if (lastFrameAt === null) {
+        lastFrameAt = frameAt;
+        animationFrameRef.current = requestAnimationFrame(step);
+        return;
+      }
+
+      const frameMs = Math.min(DEMO_MAX_FRAME_MS, Math.max(0, frameAt - lastFrameAt));
+      lastFrameAt = frameAt;
+      const simulatedSeconds = (frameMs / 1000) * DEMO_TIME_SCALE;
+      const dynamics = demoDynamicsRef.current;
+
+      setElapsedSeconds((seconds) => seconds + simulatedSeconds);
       setTravelledKm((distance) => {
         const speed = getDemoSpeedKmh(
           distance,
-          tutorStartKm,
-          tutorEndKm,
-          recommendedSpeedKmh,
-          tutorStatus
+          dynamics.tutorStartKm,
+          dynamics.tutorEndKm,
+          dynamics.recommendedSpeedKmh,
+          dynamics.tutorStatus
         );
-        return Math.min(route.distanceKm, distance + (speed * DEMO_SIM_STEP_SECONDS) / 3600);
+        return Math.min(dynamics.routeDistanceKm, distance + (speed * simulatedSeconds) / 3600);
       });
-    }, DEMO_TICK_MS);
 
-    return () => clearInterval(interval);
-  }, [isRunning, recommendedSpeedKmh, route.distanceKm, tutorEndKm, tutorStartKm, tutorStatus]);
+      animationFrameRef.current = requestAnimationFrame(step);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [isRunning]);
 
   useEffect(() => {
     setExplanationVisible(true);
@@ -344,7 +389,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     if (isTutorActive && tutorEntrySecondsRef.current === null) {
-      tutorEntrySecondsRef.current = Math.max(0, elapsedSeconds - DEMO_SIM_STEP_SECONDS);
+      tutorEntrySecondsRef.current = elapsedSeconds;
       setCompletionMessage(null);
     }
 
@@ -372,6 +417,9 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
       }
       if (explanationTimerRef.current) {
         clearTimeout(explanationTimerRef.current);
+      }
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
     };
   }, []);
@@ -408,6 +456,8 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
         overlayResetKey={overlayResetKey}
         followUserLocation={followUser}
         recenterRequestId={recenterRequestId}
+        followAnimationDurationMs={0}
+        followThrottleMs={32}
         onUserGesture={() => setFollowUser(false)}
       />
 

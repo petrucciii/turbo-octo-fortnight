@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   isNominatimNetworkError,
   isNominatimRateLimitError,
@@ -17,6 +18,7 @@ import {
 import { useLocationStore } from '../store/locationStore';
 import { useNavigationStore } from '../store/navigationStore';
 import { Coordinate, Place } from '../types/navigation';
+import type { RootStackParamList } from '../types/routes';
 
 type SearchStatus =
   | 'idle'
@@ -49,7 +51,9 @@ const getStatusMessage = (status: SearchStatus, hasQuery: boolean): string | nul
   return null;
 };
 
-export const SearchDestinationScreen = ({ navigation, route }: any) => {
+type Props = NativeStackScreenProps<RootStackParamList, 'SearchDestination'>;
+
+export const SearchDestinationScreen = ({ navigation, route }: Props) => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
@@ -60,7 +64,7 @@ export const SearchDestinationScreen = ({ navigation, route }: any) => {
   const lastSearchedKeyRef = useRef<string | null>(null);
   const { setDestination, setOrigin, setRoute } = useNavigationStore();
   const { currentLocation, lastKnownLocation } = useLocationStore();
-  const mode: 'origin' | 'destination' = route?.params?.mode === 'origin' ? 'origin' : 'destination';
+  const mode = route.params?.mode === 'origin' ? 'origin' : 'destination';
   const title = mode === 'origin' ? 'Scegli punto di partenza' : 'Cerca destinazione';
 
   useEffect(() => {

@@ -1,5 +1,37 @@
 import { Coordinate, RouteInfo, RoutePoint } from '../types/navigation';
 
+type OsrmCoordinate = [longitude: number, latitude: number];
+
+interface OsrmManeuver {
+  type?: string;
+  modifier?: string;
+  exit?: number;
+  location?: OsrmCoordinate;
+}
+
+interface OsrmStep {
+  name?: string;
+  distance: number;
+  duration: number;
+  maneuver?: OsrmManeuver;
+}
+
+interface OsrmRoute {
+  distance: number;
+  duration: number;
+  geometry: {
+    coordinates: OsrmCoordinate[];
+  };
+  legs: Array<{
+    steps: OsrmStep[];
+  }>;
+}
+
+interface OsrmResponse {
+  code?: string;
+  routes?: OsrmRoute[];
+}
+
 const getReadableModifier = (modifier?: string): string => {
   switch (modifier) {
     case 'right':
@@ -28,7 +60,7 @@ const withStreet = (text: string, streetName?: string): string => {
   return `${text} su ${streetName}`;
 };
 
-const getInstructionText = (step: any): string => {
+const getInstructionText = (step: OsrmStep): string => {
   const maneuver = step.maneuver || {};
   const type = maneuver.type;
   const modifier = getReadableModifier(maneuver.modifier);
@@ -71,11 +103,11 @@ export const getDirections = async (
   destination: Coordinate
 ): Promise<RouteInfo | null> => {
   try {
-    // OSRM e' un server pubblico gratuito. Le coordinate sono lon,lat.
+    // OSRM is public and returns GeoJSON coordinates as [longitude, latitude].
     const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson&steps=true&alternatives=false`;
 
     const response = await fetch(url);
-    const data = await response.json();
+    const data = (await response.json()) as OsrmResponse;
 
     if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
       console.warn('OSRM returned status:', data.code);
@@ -83,12 +115,12 @@ export const getDirections = async (
     }
 
     const route = data.routes[0];
-    const polyline: RoutePoint[] = route.geometry.coordinates.map((coord: number[]) => ({
+    const polyline: RoutePoint[] = route.geometry.coordinates.map((coord) => ({
       latitude: coord[1],
       longitude: coord[0],
     }));
 
-    const instructions = route.legs[0].steps.map((step: any) => ({
+    const instructions = (route.legs[0]?.steps ?? []).map((step) => ({
       text: getInstructionText(step),
       distanceKm: step.distance / 1000,
       durationMinutes: step.duration / 60,
@@ -109,8 +141,8 @@ export const getDirections = async (
       durationMinutes: route.duration / 60,
       instructions,
     };
-  } catch (e) {
-    console.error('Error fetching directions with OSRM:', e);
+  } catch (error) {
+    console.error('Error fetching directions with OSRM:', error);
     return null;
   }
 };

@@ -1,9 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSettingsStore } from '../store/settingsStore';
+import type { RootStackParamList } from '../types/routes';
 
-export const SettingsScreen = ({ navigation }: any) => {
+type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
+
+export const SettingsScreen = ({ navigation }: Props) => {
   const { voiceAlertsEnabled, vibrationEnabled, setVoiceAlertsEnabled, setVibrationEnabled } = useSettingsStore();
 
   return (
