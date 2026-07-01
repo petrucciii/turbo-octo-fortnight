@@ -82,7 +82,7 @@ export const NavigationInstructionCard: React.FC<Props> = ({
       </View>
       <View style={styles.nextBox}>
         <Text style={styles.nextLabel}>Poi</Text>
-        <Text style={styles.nextText} numberOfLines={1}>
+        <Text style={styles.nextText} numberOfLines={2} ellipsizeMode="tail">
           {nextText}
         </Text>
       </View>
@@ -93,14 +93,14 @@ export const NavigationInstructionCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 44,
-    left: 18,
-    right: 18,
-    backgroundColor: 'rgba(10,18,32,0.9)',
-    borderRadius: 20,
+    top: 42,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(11,16,31,0.88)',
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.24)',
+    borderColor: 'rgba(167,139,250,0.28)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28,
@@ -111,19 +111,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(120,53,15,0.9)',
   },
   mainRow: {
-    minHeight: 70,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    gap: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    gap: 10,
   },
   iconColumn: {
-    width: 50,
+    width: 46,
     alignItems: 'center',
   },
   maneuverIcon: {
-    color: '#38BDF8',
+    color: '#A78BFA',
     fontSize: 22,
     fontWeight: '900',
     lineHeight: 28,
@@ -140,9 +140,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#F8FAFC',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
-    lineHeight: 22,
+    lineHeight: 21,
   },
   subtitle: {
     color: '#CBD5E1',
@@ -152,16 +152,14 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   nextBox: {
-    alignSelf: 'flex-start',
-    maxWidth: '88%',
-    minHeight: 30,
+    alignSelf: 'stretch',
+    minHeight: 28,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(124,58,237,0.38)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderBottomRightRadius: 18,
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(124,58,237,0.22)',
+    paddingHorizontal: 13,
+    paddingVertical: 5,
   },
   nextLabel: {
     color: '#EDE9FE',

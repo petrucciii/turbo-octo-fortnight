@@ -1,6 +1,10 @@
 import { Coordinate, RouteInfo, RouteInstruction, RouteProgress } from '../types/navigation';
 import { calculateDistanceBetweenCoordinates } from './geo';
 import { calculateBearing } from './motion';
+import {
+  buildCumulativeRouteDistancesKm,
+  getPolylineSectionByDistance,
+} from './routeGeometry';
 
 export interface RouteArrow {
   id: string;
@@ -58,30 +62,6 @@ const findNearestRouteIndex = (polyline: Coordinate[], target: Coordinate): numb
   return bestIndex;
 };
 
-const trimSectionByDistance = (section: Coordinate[], maxDistanceKm = 0.28): Coordinate[] => {
-  if (section.length <= 2) return section;
-
-  const trimmed = [section[0]];
-  let travelledKm = 0;
-
-  for (let index = 1; index < section.length; index += 1) {
-    const previous = section[index - 1];
-    const current = section[index];
-    const segmentKm = calculateDistanceBetweenCoordinates(
-      previous.latitude,
-      previous.longitude,
-      current.latitude,
-      current.longitude
-    );
-
-    travelledKm += segmentKm;
-    trimmed.push(current);
-    if (travelledKm >= maxDistanceKm) break;
-  }
-
-  return trimmed;
-};
-
 export const getManeuverRouteCue = (
   route: RouteInfo | null,
   instruction: RouteInstruction | null | undefined
@@ -91,9 +71,20 @@ export const getManeuverRouteCue = (
   }
 
   const maneuverIndex = findNearestRouteIndex(route.polyline, instruction.location);
-  const startIndex = Math.max(0, maneuverIndex - 2);
-  const endIndex = Math.min(route.polyline.length - 1, maneuverIndex + 4);
-  const section = trimSectionByDistance(route.polyline.slice(startIndex, endIndex + 1));
+  const cumulativeDistancesKm = buildCumulativeRouteDistancesKm(route.polyline);
+  const maneuverDistanceKm = cumulativeDistancesKm[maneuverIndex] ?? 0;
+  const isRoundabout =
+    instruction.maneuverType?.toLowerCase().includes('roundabout') ||
+    instruction.maneuverType?.toLowerCase().includes('rotary') ||
+    /rotatoria|rotonda/i.test(instruction.text ?? '');
+  const beforeKm = isRoundabout ? 0.055 : 0.04;
+  const afterKm = isRoundabout ? 0.12 : 0.075;
+  const section = getPolylineSectionByDistance(
+    route.polyline,
+    maneuverDistanceKm - beforeKm,
+    maneuverDistanceKm + afterKm,
+    cumulativeDistancesKm
+  );
 
   if (section.length < 2) return null;
 

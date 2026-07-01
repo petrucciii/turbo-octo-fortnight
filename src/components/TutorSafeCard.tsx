@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { TutorStatus, TutorSegment } from '../types/tutor';
-import { formatSpeed, formatDistance } from '../utils/formatting';
+import { formatSpeed, formatDistance, formatDuration } from '../utils/formatting';
 
 interface Props {
   segment: TutorSegment;
@@ -11,6 +11,9 @@ interface Props {
   distanceRemainingKm: number;
   timeRemainingMinutes: number | null;
   status: TutorStatus;
+  distanceTravelledKm?: number;
+  elapsedSeconds?: number | null;
+  compact?: boolean;
 }
 
 const getStatusText = (status: TutorStatus): string => {
@@ -26,18 +29,37 @@ export const TutorSafeCard: React.FC<Props> = ({
   currentSpeedKmh,
   recommendedSpeedKmh,
   distanceRemainingKm,
+  timeRemainingMinutes,
   status,
+  distanceTravelledKm,
+  elapsedSeconds,
+  compact = false,
 }) => {
   const isOverLimit = status === 'over_limit';
+  const isWarning = status === 'warning';
+  const hasRecommendedSpeed = recommendedSpeedKmh !== null && Number.isFinite(recommendedSpeedKmh);
+  const recommendedLabel = hasRecommendedSpeed
+    ? `${formatSpeed(recommendedSpeedKmh)} km/h`
+    : 'Rallenta in sicurezza';
+  const elapsedLabel =
+    typeof elapsedSeconds === 'number' && Number.isFinite(elapsedSeconds)
+      ? formatDuration(elapsedSeconds)
+      : null;
+  const remainingTimeLabel =
+    typeof timeRemainingMinutes === 'number' && Number.isFinite(timeRemainingMinutes) && timeRemainingMinutes > 0
+      ? timeRemainingMinutes < 1
+        ? '<1 min'
+        : `${Math.round(timeRemainingMinutes)} min`
+      : null;
 
   return (
-    <View style={[styles.container, isOverLimit && styles.containerAlert]}>
+    <View style={[styles.container, compact && styles.containerCompact, isOverLimit && styles.containerAlert, isWarning && styles.containerWarning]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.kicker}>Tutor attivo</Text>
-          <Text style={styles.title} numberOfLines={1}>{segment.name}</Text>
+          {!compact ? <Text style={styles.title} numberOfLines={2}>{segment.name}</Text> : null}
         </View>
-        <View style={[styles.statusPill, isOverLimit && styles.statusPillAlert]}>
+        <View style={[styles.statusPill, isOverLimit && styles.statusPillAlert, isWarning && styles.statusPillWarning]}>
           <Text style={styles.statusText}>{getStatusText(status)}</Text>
         </View>
       </View>
@@ -59,14 +81,33 @@ export const TutorSafeCard: React.FC<Props> = ({
           <Text style={styles.metricValue}>{formatDistance(distanceRemainingKm)}</Text>
           <Text style={styles.metricLabel}>Fine</Text>
         </View>
+        {!compact && typeof distanceTravelledKm === 'number' ? (
+          <View style={styles.metric}>
+            <Text style={styles.metricValue}>{formatDistance(distanceTravelledKm)}</Text>
+            <Text style={styles.metricLabel}>Percorsi</Text>
+          </View>
+        ) : null}
+        {!compact && elapsedLabel ? (
+          <View style={styles.metric}>
+            <Text style={styles.metricValue}>{elapsedLabel}</Text>
+            <Text style={styles.metricLabel}>Tempo</Text>
+          </View>
+        ) : null}
       </View>
 
-      {isOverLimit ? (
-        <Text style={styles.warningText}>
-          Rallenta in sicurezza
-          {recommendedSpeedKmh ? ` - target ${formatSpeed(recommendedSpeedKmh)} km/h` : ''}
-        </Text>
-      ) : null}
+      <View style={[styles.recommendation, isOverLimit && styles.recommendationAlert]}>
+        <Text style={styles.recommendationLabel}>Velocita consigliata</Text>
+        <Text style={styles.recommendationValue}>{recommendedLabel}</Text>
+      </View>
+
+      <Text style={[styles.warningText, !isOverLimit && styles.safeText]}>
+        {isOverLimit
+          ? 'Media sopra limite: riduci gradualmente e resta prudente.'
+          : isWarning
+            ? 'Media vicina al limite: mantieni una velocita regolare.'
+            : 'Media sotto controllo.'}
+        {remainingTimeLabel ? ` Fine stimata tra ${remainingTimeLabel}.` : ''}
+      </Text>
     </View>
   );
 };
@@ -89,15 +130,25 @@ const styles = StyleSheet.create({
     elevation: 14,
     zIndex: 100,
   },
+  containerCompact: {
+    top: 84,
+    left: 14,
+    right: 14,
+    padding: 9,
+    borderRadius: 14,
+  },
   containerAlert: {
     borderColor: '#FB503B',
+  },
+  containerWarning: {
+    borderColor: '#F59E0B',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   kicker: {
     color: '#FDBA74',
@@ -110,6 +161,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     marginTop: 2,
+    maxWidth: 220,
   },
   statusPill: {
     borderRadius: 12,
@@ -120,6 +172,9 @@ const styles = StyleSheet.create({
   statusPillAlert: {
     backgroundColor: 'rgba(251,80,59,0.24)',
   },
+  statusPillWarning: {
+    backgroundColor: 'rgba(245,158,11,0.22)',
+  },
   statusText: {
     color: '#F8FAFC',
     fontSize: 11,
@@ -127,14 +182,16 @@ const styles = StyleSheet.create({
   },
   metrics: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   metric: {
-    flex: 1,
+    minWidth: 54,
+    flexGrow: 1,
   },
   metricValue: {
     color: '#F8FAFC',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
   },
   metricLabel: {
@@ -147,6 +204,37 @@ const styles = StyleSheet.create({
     color: '#FDBA74',
     fontSize: 12,
     fontWeight: '800',
-    marginTop: 9,
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  safeText: {
+    color: '#BAE6FD',
+  },
+  recommendation: {
+    marginTop: 8,
+    borderRadius: 11,
+    backgroundColor: 'rgba(34,211,238,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.22)',
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  recommendationAlert: {
+    backgroundColor: 'rgba(251,146,60,0.14)',
+    borderColor: 'rgba(251,146,60,0.38)',
+  },
+  recommendationLabel: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  recommendationValue: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

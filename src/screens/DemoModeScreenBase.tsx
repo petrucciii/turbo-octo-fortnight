@@ -2,15 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MapViewComponent } from '../components/MapViewComponent';
 import { NavigationBottomCard } from '../components/NavigationBottomCard';
-import { NavigationInstructionCard } from '../components/NavigationInstructionCard';
 import { NavigationSideControls } from '../components/NavigationSideControls';
 import { SpeedLimitBox } from '../components/SpeedLimitBox';
-import { TutorApproachAlert } from '../components/TutorApproachAlert';
 import { TutorCompletionToast } from '../components/TutorCompletionToast';
 import { TutorSafeCard } from '../components/TutorSafeCard';
 import { DEFAULT_TUTOR_SEGMENTS } from '../data/defaultTutorSegments';
 import { Coordinate, MapDisplayType, RouteInfo } from '../types/navigation';
-import { TutorSegment } from '../types/tutor';
+import { TutorSegment, TutorStatus } from '../types/tutor';
 import { calculateAverageSpeed, calculateRecommendedSpeed, getTutorStatus } from '../utils/tutorCalculations';
 import { calculateDistanceBetweenCoordinates } from '../utils/geo';
 import { calculateBearing } from '../utils/motion';
@@ -24,6 +22,9 @@ const DEMO_SEGMENT =
 const DEMO_START: Coordinate = { latitude: 45.4849562, longitude: 12.0346642 };
 const DEMO_TUTOR_START: Coordinate = { latitude: 45.485453, longitude: 12.031735 };
 const DEMO_TUTOR_END: Coordinate = { latitude: 45.488636, longitude: 12.014756 };
+const DEMO_TICK_MS = 180;
+const DEMO_SIM_STEP_SECONDS = 1;
+const DEMO_EXPLANATION_VISIBLE_MS = 4300;
 
 const DEMO_POLYLINE: Coordinate[] = [
   DEMO_START,
@@ -90,6 +91,11 @@ const clamp = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, value));
 };
 
+const formatCompactSpeed = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  return `${Math.round(value)} km/h`;
+};
+
 const getPointAtDistance = (polyline: Coordinate[], targetDistanceKm: number): {
   coordinate: Coordinate;
   heading: number | null;
@@ -127,43 +133,88 @@ const getPointAtDistance = (polyline: Coordinate[], targetDistanceKm: number): {
   return { coordinate: last, heading: calculateBearing(previous, last) };
 };
 
-const getDemoSpeedKmh = (travelledKm: number, tutorStartKm: number, tutorEndKm: number): number => {
+const getDemoSpeedKmh = (
+  travelledKm: number,
+  tutorStartKm: number,
+  tutorEndKm: number,
+  recommendedSpeedKmh: number | null,
+  tutorStatus: TutorStatus
+): number => {
   if (travelledKm < tutorStartKm) return 42;
-  if (travelledKm < tutorStartKm + (tutorEndKm - tutorStartKm) * 0.52) return 56;
-  if (travelledKm < tutorEndKm) return 44;
+
+  const segmentLengthKm = Math.max(0.01, tutorEndKm - tutorStartKm);
+  const tutorRatio = clamp((travelledKm - tutorStartKm) / segmentLengthKm, 0, 1);
+
+  if (tutorRatio < 0.3) return 60;
+  if (tutorRatio < 0.86 && tutorStatus === 'over_limit') {
+    return recommendedSpeedKmh === null ? 34 : clamp(recommendedSpeedKmh, 34, 46);
+  }
+  if (tutorRatio < 0.86) return 43;
+  if (travelledKm < tutorEndKm) return 48;
   return 38;
 };
 
-const getDemoExplanation = (
-  isTutorActive: boolean,
-  isTutorCompleted: boolean,
-  tutorApproachKm: number,
-  statusText: string
-): { title: string; body: string } => {
+interface DemoExplanationParams {
+  isTutorActive: boolean;
+  isTutorCompleted: boolean;
+  tutorApproachKm: number;
+  tutorStatus: TutorStatus;
+  averageSpeedKmh: number;
+  recommendedSpeedKmh: number | null;
+  finalAverageSpeedKmh: number | null;
+  hasRecoveredAverage: boolean;
+}
+
+const getDemoExplanation = ({
+  isTutorActive,
+  isTutorCompleted,
+  tutorApproachKm,
+  tutorStatus,
+  averageSpeedKmh,
+  recommendedSpeedKmh,
+  finalAverageSpeedKmh,
+  hasRecoveredAverage,
+}: DemoExplanationParams): { title: string; body: string } => {
   if (isTutorCompleted) {
     return {
       title: 'Tutor terminato',
-      body: "Media finale calcolata. La navigazione demo continua pulita dopo l'uscita dal tratto.",
+      body: `Media finale: ${formatCompactSpeed(finalAverageSpeedKmh)}. Tutor Safe si disattiva e la navigazione continua normalmente.`,
     };
   }
 
   if (isTutorActive) {
+    if (tutorStatus === 'over_limit') {
+      return {
+        title: 'Velocita consigliata',
+        body: recommendedSpeedKmh === null
+          ? 'Media troppo alta: rientro difficile. Rallenta in sicurezza e mantieni una guida regolare.'
+          : `Media ${formatCompactSpeed(averageSpeedKmh)} su limite 50. Mantieni circa ${formatCompactSpeed(recommendedSpeedKmh)} fino alla fine per rientrare.`,
+      };
+    }
+
+    if (hasRecoveredAverage) {
+      return {
+        title: 'Media rientrata',
+        body: 'La media e tornata entro il limite: Tutor Safe continua a monitorare fino al punto di uscita.',
+      };
+    }
+
     return {
-      title: statusText === 'Media alta' ? 'Media alta' : 'Tutor attivo',
-      body: 'Da questo punto Tutor Safe calcola la velocita media e la confronta con il limite del tratto.',
+      title: 'Tutor Safe attivo',
+      body: 'Da qui parte il calcolo della velocita media tra ingresso e uscita del tratto.',
     };
   }
 
   if (tutorApproachKm <= 1) {
     return {
-      title: 'Demo Tutor Safe',
-      body: "Tra poco entrerai in un tratto controllato da Tutor. L'app calcolera la velocita media fino all'uscita.",
+      title: 'Preavviso Tutor',
+      body: "Tra poco entrerai in un tratto controllato. Tutor Safe calcolera la media dal punto di ingresso al punto di uscita.",
     };
   }
 
   return {
     title: 'Navigazione demo',
-    body: 'La freccia segue il percorso e il Tutor viene segnalato prima dell ingresso.',
+    body: 'La simulazione parte poco prima del Tutor prova Cavin Caselle e mostra come cambia la media nel tratto.',
   };
 };
 
@@ -177,6 +228,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
     () => findTutorSegmentsOnRoute(route, [DEMO_SEGMENT as TutorSegment])[0] ?? null,
     [route]
   );
+  const demoTutorMatches = useMemo(() => (tutorMatch ? [tutorMatch] : []), [tutorMatch]);
   const [travelledKm, setTravelledKm] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(true);
@@ -185,13 +237,16 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const [recenterRequestId, setRecenterRequestId] = useState(0);
   const [overlayResetKey, setOverlayResetKey] = useState(0);
   const [completionMessage, setCompletionMessage] = useState<string | null>(null);
+  const [finalAverageSpeedKmh, setFinalAverageSpeedKmh] = useState<number | null>(null);
+  const [explanationVisible, setExplanationVisible] = useState(true);
   const tutorEntrySecondsRef = useRef<number | null>(null);
   const tutorCompletedRef = useRef(false);
+  const hasDemoOverLimitRef = useRef(false);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const explanationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tutorStartKm = tutorMatch?.startDistanceKm ?? 0.7;
   const tutorEndKm = tutorMatch?.endDistanceKm ?? Math.min(route.distanceKm, tutorStartKm + 1.3);
-  const currentSpeedKmh = getDemoSpeedKmh(travelledKm, tutorStartKm, tutorEndKm);
   const userPose = getPointAtDistance(route.polyline, travelledKm);
   const progress = getRouteProgress(route, userPose.coordinate);
   const isTutorActive = Boolean(
@@ -203,7 +258,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
   const tutorDistanceTravelledKm = clamp(travelledKm - tutorStartKm, 0, Math.max(0.01, tutorEndKm - tutorStartKm));
   const tutorSessionInProgress = tutorEntrySecondsRef.current !== null || isTutorActive;
   const tutorElapsedSeconds =
-    tutorEntrySecondsRef.current === null ? 1 : Math.max(1, elapsedSeconds - tutorEntrySecondsRef.current);
+    tutorEntrySecondsRef.current === null ? 0 : Math.max(1, elapsedSeconds - tutorEntrySecondsRef.current);
   const averageSpeedKmh = tutorSessionInProgress
     ? calculateAverageSpeed(tutorDistanceTravelledKm, tutorElapsedSeconds)
     : 0;
@@ -216,40 +271,86 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
       )
     : null;
   const tutorStatus = getTutorStatus(averageSpeedKmh, DEMO_SEGMENT.speed_limit_kmh);
+  const currentSpeedKmh = getDemoSpeedKmh(
+    travelledKm,
+    tutorStartKm,
+    tutorEndKm,
+    recommendedSpeedKmh,
+    tutorStatus
+  );
   const tutorRemainingKm = Math.max(0, tutorEndKm - travelledKm);
   const tutorApproachKm = Math.max(0, tutorStartKm - travelledKm);
   const maneuverCue = getContextualManeuverRouteCue(route, progress ?? null);
   const eta = new Date(Date.now() + (progress?.durationRemainingMinutes ?? 0) * 60_000);
-  const statusLabel = tutorStatus === 'over_limit' ? 'Media alta' : 'OK';
-  const explanation = getDemoExplanation(
+  const hasRecoveredAverage =
+    isTutorActive &&
+    hasDemoOverLimitRef.current &&
+    tutorStatus !== 'over_limit' &&
+    averageSpeedKmh > 0;
+  const explanation = getDemoExplanation({
     isTutorActive,
-    tutorCompletedRef.current,
+    isTutorCompleted: tutorCompletedRef.current,
     tutorApproachKm,
-    statusLabel
-  );
+    tutorStatus,
+    averageSpeedKmh,
+    recommendedSpeedKmh,
+    finalAverageSpeedKmh,
+    hasRecoveredAverage,
+  });
+  const explanationPhaseKey = `${explanation.title}-${tutorStatus}-${tutorCompletedRef.current ? 'done' : 'run'}`;
 
   useEffect(() => {
     if (!isRunning) return undefined;
 
     const interval = setInterval(() => {
-      setElapsedSeconds((seconds) => seconds + 3);
+      setElapsedSeconds((seconds) => seconds + DEMO_SIM_STEP_SECONDS);
       setTravelledKm((distance) => {
-        const speed = getDemoSpeedKmh(distance, tutorStartKm, tutorEndKm);
-        return Math.min(route.distanceKm, distance + (speed * 3) / 3600);
+        const speed = getDemoSpeedKmh(
+          distance,
+          tutorStartKm,
+          tutorEndKm,
+          recommendedSpeedKmh,
+          tutorStatus
+        );
+        return Math.min(route.distanceKm, distance + (speed * DEMO_SIM_STEP_SECONDS) / 3600);
       });
-    }, 650);
+    }, DEMO_TICK_MS);
 
     return () => clearInterval(interval);
-  }, [isRunning, route.distanceKm, tutorEndKm, tutorStartKm]);
+  }, [isRunning, recommendedSpeedKmh, route.distanceKm, tutorEndKm, tutorStartKm, tutorStatus]);
+
+  useEffect(() => {
+    setExplanationVisible(true);
+    if (explanationTimerRef.current) {
+      clearTimeout(explanationTimerRef.current);
+    }
+    explanationTimerRef.current = setTimeout(
+      () => setExplanationVisible(false),
+      DEMO_EXPLANATION_VISIBLE_MS
+    );
+
+    return () => {
+      if (explanationTimerRef.current) {
+        clearTimeout(explanationTimerRef.current);
+      }
+    };
+  }, [explanationPhaseKey]);
+
+  useEffect(() => {
+    if (isTutorActive && tutorStatus === 'over_limit') {
+      hasDemoOverLimitRef.current = true;
+    }
+  }, [isTutorActive, tutorStatus]);
 
   useEffect(() => {
     if (isTutorActive && tutorEntrySecondsRef.current === null) {
-      tutorEntrySecondsRef.current = elapsedSeconds;
+      tutorEntrySecondsRef.current = Math.max(0, elapsedSeconds - DEMO_SIM_STEP_SECONDS);
       setCompletionMessage(null);
     }
 
     if (tutorMatch && travelledKm > tutorEndKm && tutorEntrySecondsRef.current !== null && !tutorCompletedRef.current) {
       tutorCompletedRef.current = true;
+      setFinalAverageSpeedKmh(averageSpeedKmh);
       const message = `Tratto Tutor terminato. Media finale: ${Math.round(averageSpeedKmh)} km/h.`;
       setCompletionMessage(message);
       tutorEntrySecondsRef.current = null;
@@ -269,13 +370,19 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
       if (completionTimerRef.current) {
         clearTimeout(completionTimerRef.current);
       }
+      if (explanationTimerRef.current) {
+        clearTimeout(explanationTimerRef.current);
+      }
     };
   }, []);
 
   const resetDemo = () => {
     tutorEntrySecondsRef.current = null;
     tutorCompletedRef.current = false;
+    hasDemoOverLimitRef.current = false;
     setCompletionMessage(null);
+    setFinalAverageSpeedKmh(null);
+    setExplanationVisible(true);
     setElapsedSeconds(0);
     setTravelledKm(0);
     setIsRunning(true);
@@ -291,6 +398,7 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
         origin={route.polyline[0]}
         route={route}
         tutorSegments={tutorMatch ? [DEMO_SEGMENT] : []}
+        tutorMatches={demoTutorMatches}
         activeTutorSegment={isTutorActive ? DEMO_SEGMENT : null}
         destination={route.polyline[route.polyline.length - 1]}
         heading={userPose.heading}
@@ -310,23 +418,19 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <NavigationInstructionCard
-        instruction={progress?.currentInstruction ?? null}
-        nextInstruction={progress?.nextInstruction ?? null}
-        currentRoadName={progress?.currentRoadName ?? 'Cavin Caselle'}
-        distanceToManeuverKm={progress?.instructionDistanceRemainingKm ?? null}
-        isOffRoute={false}
-        isRerouting={false}
-      />
-
-      {tutorMatch && !isTutorActive && !tutorCompletedRef.current && tutorApproachKm <= 1 ? (
-        <TutorApproachAlert segment={DEMO_SEGMENT} distanceKm={tutorApproachKm} />
+      {explanationVisible ? (
+        <View
+          style={[
+            styles.explainCard,
+            isTutorActive && styles.explainCardActive,
+            tutorStatus === 'over_limit' && styles.explainCardAlert,
+            hasRecoveredAverage && styles.explainCardRecovered,
+          ]}
+        >
+          <Text style={styles.explainTitle}>{explanation.title}</Text>
+          <Text style={styles.explainBody} numberOfLines={2}>{explanation.body}</Text>
+        </View>
       ) : null}
-
-      <View style={[styles.explainCard, isTutorActive && styles.explainCardActive]}>
-        <Text style={styles.explainTitle}>{explanation.title}</Text>
-        <Text style={styles.explainBody}>{explanation.body}</Text>
-      </View>
 
       {isTutorActive ? (
         <TutorSafeCard
@@ -337,6 +441,9 @@ export const DemoModeScreenBase: React.FC<Props> = ({ navigation }) => {
           distanceRemainingKm={tutorRemainingKm}
           timeRemainingMinutes={(tutorRemainingKm / Math.max(1, currentSpeedKmh)) * 60}
           status={tutorStatus}
+          distanceTravelledKm={tutorDistanceTravelledKm}
+          elapsedSeconds={tutorElapsedSeconds}
+          compact
         />
       ) : null}
 
@@ -409,15 +516,15 @@ const styles = StyleSheet.create({
   },
   explainCard: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 150,
-    borderRadius: 16,
-    backgroundColor: 'rgba(10,18,32,0.84)',
+    left: 14,
+    right: 88,
+    bottom: 112,
+    borderRadius: 13,
+    backgroundColor: 'rgba(10,18,32,0.72)',
     borderWidth: 1,
     borderColor: 'rgba(34,211,238,0.22)',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -426,18 +533,26 @@ const styles = StyleSheet.create({
   },
   explainCardActive: {
     borderColor: 'rgba(251,146,60,0.55)',
-    backgroundColor: 'rgba(30,20,36,0.88)',
+    backgroundColor: 'rgba(30,20,36,0.82)',
+  },
+  explainCardAlert: {
+    borderColor: 'rgba(251,80,59,0.72)',
+    backgroundColor: 'rgba(48,18,28,0.84)',
+  },
+  explainCardRecovered: {
+    borderColor: 'rgba(34,211,238,0.55)',
+    backgroundColor: 'rgba(12,36,48,0.84)',
   },
   explainTitle: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
   },
   explainBody: {
     color: '#CBD5E1',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
-    lineHeight: 16,
-    marginTop: 4,
+    lineHeight: 14,
+    marginTop: 3,
   },
 });

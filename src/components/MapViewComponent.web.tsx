@@ -2,14 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Coordinate, MapDisplayType, RouteInfo } from '../types/navigation';
 import { TutorSegment } from '../types/tutor';
-import { projectCoordinate } from '../utils/motion';
+import { projectCoordinate, smoothHeading } from '../utils/motion';
 import { ManeuverRouteCue } from '../utils/routeArrows';
+import type { RouteTutorMatch } from '../utils/routeProgress';
+import { splitRouteByTutorMatches } from '../utils/routeGeometry';
 
 interface Props {
   userLocation: Coordinate | null;
   origin: Coordinate | null;
   route: RouteInfo | null;
   tutorSegments: TutorSegment[];
+  tutorMatches: RouteTutorMatch[];
   activeTutorSegment: TutorSegment | null;
   destination: Coordinate | null;
   heading: number | null;
@@ -25,45 +28,139 @@ interface Props {
 const getUserArrowHtml = (heading: number | null): string => {
   const rotation = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
   return `<div style="
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
     position: relative;
     transform: rotate(${rotation}deg);
-    transform-origin: 15px 15px;
-    filter: drop-shadow(0 2px 5px rgba(0,0,0,.42));
+    transform-origin: 18px 18px;
+    filter: drop-shadow(0 2px 6px rgba(2,6,23,.48));
   ">
     <div style="
       position: absolute;
-      left: 7px;
-      top: 2px;
-      width: 16px;
-      height: 24px;
-      background: linear-gradient(180deg,#67E8F9 0%,#0284C7 100%);
-      clip-path: polygon(50% 0%, 88% 82%, 50% 68%, 12% 82%);
+      left: 6px;
+      top: 3px;
+      width: 24px;
+      height: 30px;
+      background: rgba(124,58,237,.18);
+      border-radius: 14px;
+    "></div>
+    <div style="
+      position: absolute;
+      left: 6px;
+      top: 1px;
+      width: 24px;
+      height: 26px;
+      background: rgba(6,8,24,.94);
+      clip-path: polygon(50% 0%, 100% 100%, 64% 92%, 50% 70%, 36% 92%, 0% 100%);
       border-radius: 8px;
     "></div>
     <div style="
       position: absolute;
-      left: 12px;
-      top: 13px;
-      width: 6px;
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(8,47,73,.9);
+      left: 9px;
+      top: 5px;
+      width: 18px;
+      height: 20px;
+      background: linear-gradient(180deg,#A78BFA 0%,#6D28D9 100%);
+      clip-path: polygon(50% 0%, 90% 100%, 58% 86%, 50% 66%, 42% 86%, 10% 100%);
+      border-radius: 8px;
     "></div>
+    <div style="
+      position:absolute;
+      left:15px;
+      top:16px;
+      width:5px;
+      height:5px;
+      border-radius:3px;
+      background:#DDD6FE;
+    "></div>
+  </div>`;
+};
+
+const getTutorMarkerHtml = (type: 'start' | 'end', active: boolean): string => {
+  const isStart = type === 'start';
+  const label = isStart ? 'Inizio Tutor' : 'Fine Tutor';
+  const accent = active ? '#22D3EE' : isStart ? '#F97316' : '#A855F7';
+  const glyph = isStart
+    ? '<div style="width:2px;height:9px;border-radius:1px;background:#FFF7ED;"></div>'
+    : '<div style="width:6px;height:6px;border-radius:3px;background:#F5F3FF;"></div>';
+
+  return `<div style="
+    display:flex;
+    align-items:center;
+    gap:6px;
+    height:26px;
+    min-width:94px;
+    padding:0 9px 0 5px;
+    border-radius:13px;
+    background:${active ? 'rgba(30,27,75,.92)' : 'rgba(15,23,42,.9)'};
+    border:1px solid ${active ? 'rgba(168,85,247,.9)' : 'rgba(251,146,60,.72)'};
+    box-shadow:0 2px 7px rgba(2,6,23,.34);
+    color:#F8FAFC;
+    font-size:10px;
+    font-weight:900;
+    white-space:nowrap;
+  ">
+    <div style="
+      width:15px;
+      height:15px;
+      border-radius:8px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:${accent};
+      border:1px solid rgba(255,255,255,.78);
+    ">${glyph}</div>
+    <span>${label}</span>
   </div>`;
 };
 
 const getRouteArrowHtml = (heading: number): string => {
   return `<div style="
-    width: 0;
-    height: 0;
+    width:30px;
+    height:30px;
+    position:relative;
     transform: rotate(${heading}deg);
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-bottom: 17px solid #22D3EE;
-    filter: drop-shadow(0 1px 2px rgba(0,0,0,.35));
-  "></div>`;
+    filter: drop-shadow(0 2px 4px rgba(2,6,23,.38));
+  ">
+    <div style="
+      position:absolute;
+      left:4px;
+      top:1px;
+      width:0;
+      height:0;
+      border-left:11px solid transparent;
+      border-right:11px solid transparent;
+      border-bottom:24px solid rgba(8,13,28,.88);
+    "></div>
+    <div style="
+      position:absolute;
+      left:7px;
+      top:4px;
+      width:0;
+      height:0;
+      border-left:8px solid transparent;
+      border-right:8px solid transparent;
+      border-bottom:18px solid #FBBF24;
+    "></div>
+    <div style="
+      position:absolute;
+      left:11px;
+      top:21px;
+      width:8px;
+      height:8px;
+      border-radius:4px;
+      background:#B45309;
+      border:1px solid rgba(254,243,199,.9);
+    "></div>
+  </div>`;
+};
+
+const isValidCoordinate = (coordinate: Coordinate | null): coordinate is Coordinate => {
+  return Boolean(
+    coordinate &&
+      Number.isFinite(coordinate.latitude) &&
+      Number.isFinite(coordinate.longitude)
+  );
 };
 
 export const MapViewComponent: React.FC<Props> = ({
@@ -71,6 +168,7 @@ export const MapViewComponent: React.FC<Props> = ({
   origin,
   route,
   tutorSegments,
+  tutorMatches,
   activeTutorSegment,
   destination,
   heading,
@@ -86,7 +184,7 @@ export const MapViewComponent: React.FC<Props> = ({
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const routeArrowMarkersRef = useRef<any[]>([]);
-  const routeLayerRef = useRef<any>(null);
+  const routeLayerRefs = useRef<any[]>([]);
   const routeOutlineLayerRef = useRef<any>(null);
   const maneuverCueLayerRef = useRef<any>(null);
   const userMarkerRef = useRef<any>(null);
@@ -95,12 +193,19 @@ export const MapViewComponent: React.FC<Props> = ({
   const isNavigatingRef = useRef(isNavigating);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [LLib, setLLib] = useState<any>(null);
+  const [lastRenderableUserLocation, setLastRenderableUserLocation] = useState<Coordinate | null>(
+    isValidCoordinate(userLocation) ? userLocation : null
+  );
+  const [lastRenderableHeading, setLastRenderableHeading] = useState<number | null>(
+    typeof heading === 'number' && Number.isFinite(heading) ? heading : null
+  );
+  const visibleUserLocation = isValidCoordinate(userLocation) ? userLocation : lastRenderableUserLocation;
+  const visibleHeading = lastRenderableHeading;
 
   const centerOnUser = (animate = true) => {
-    if (!mapInstanceRef.current || !userLocation) return;
+    if (!mapInstanceRef.current || !visibleUserLocation) return;
     const map = mapInstanceRef.current;
-    const safeHeading = typeof heading === 'number' && Number.isFinite(heading) ? heading : null;
-    const center = safeHeading !== null ? projectCoordinate(userLocation, safeHeading, 62) : userLocation;
+    const center = visibleHeading !== null ? projectCoordinate(visibleUserLocation, visibleHeading, 62) : visibleUserLocation;
     map.setView([center.latitude, center.longitude], isNavigating ? 18 : Math.max(map.getZoom(), 15), {
       animate,
     });
@@ -110,10 +215,8 @@ export const MapViewComponent: React.FC<Props> = ({
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
 
-    if (routeLayerRef.current) {
-      map.removeLayer(routeLayerRef.current);
-      routeLayerRef.current = null;
-    }
+    routeLayerRefs.current.forEach((layer) => map.removeLayer(layer));
+    routeLayerRefs.current = [];
     if (routeOutlineLayerRef.current) {
       map.removeLayer(routeOutlineLayerRef.current);
       routeOutlineLayerRef.current = null;
@@ -138,6 +241,18 @@ export const MapViewComponent: React.FC<Props> = ({
   useEffect(() => {
     isNavigatingRef.current = isNavigating;
   }, [isNavigating]);
+
+  useEffect(() => {
+    if (isValidCoordinate(userLocation)) {
+      setLastRenderableUserLocation(userLocation);
+    }
+  }, [userLocation?.latitude, userLocation?.longitude]);
+
+  useEffect(() => {
+    if (typeof heading === 'number' && Number.isFinite(heading)) {
+      setLastRenderableHeading((previous) => smoothHeading(previous, heading, 0.32));
+    }
+  }, [heading]);
 
   useEffect(() => {
     const loadLeaflet = async () => {
@@ -171,8 +286,8 @@ export const MapViewComponent: React.FC<Props> = ({
   useEffect(() => {
     if (!leafletLoaded || !LLib || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    const defaultLat = userLocation?.latitude || origin?.latitude || 41.9028;
-    const defaultLng = userLocation?.longitude || origin?.longitude || 12.4964;
+    const defaultLat = visibleUserLocation?.latitude || origin?.latitude || 41.9028;
+    const defaultLng = visibleUserLocation?.longitude || origin?.longitude || 12.4964;
 
     const map = LLib.map(mapContainerRef.current, {
       zoomControl: false,
@@ -235,21 +350,21 @@ export const MapViewComponent: React.FC<Props> = ({
   }, [mapType, LLib]);
 
   useEffect(() => {
-    if (!mapInstanceRef.current || !LLib || !userLocation) return;
+    if (!mapInstanceRef.current || !LLib || !visibleUserLocation) return;
 
     const map = mapInstanceRef.current;
     const icon = LLib.divIcon({
       className: '',
-      html: getUserArrowHtml(heading),
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      html: getUserArrowHtml(visibleHeading),
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     });
 
     if (userMarkerRef.current) {
-      userMarkerRef.current.setLatLng([userLocation.latitude, userLocation.longitude]);
+      userMarkerRef.current.setLatLng([visibleUserLocation.latitude, visibleUserLocation.longitude]);
       userMarkerRef.current.setIcon(icon);
     } else {
-      userMarkerRef.current = LLib.marker([userLocation.latitude, userLocation.longitude], {
+      userMarkerRef.current = LLib.marker([visibleUserLocation.latitude, visibleUserLocation.longitude], {
         icon,
         zIndexOffset: 1000,
       }).addTo(map);
@@ -258,9 +373,9 @@ export const MapViewComponent: React.FC<Props> = ({
     if (isNavigating && followUserLocation) {
       centerOnUser(true);
     } else if (!route) {
-      map.setView([userLocation.latitude, userLocation.longitude], map.getZoom(), { animate: true });
+      map.setView([visibleUserLocation.latitude, visibleUserLocation.longitude], map.getZoom(), { animate: true });
     }
-  }, [userLocation, heading, isNavigating, followUserLocation, route, LLib]);
+  }, [visibleUserLocation, visibleHeading, isNavigating, followUserLocation, route, LLib]);
 
   useEffect(() => {
     centerOnUser(true);
@@ -280,22 +395,30 @@ export const MapViewComponent: React.FC<Props> = ({
     if (route && route.polyline.length > 0) {
       const latlngs = route.polyline.map((point) => [point.latitude, point.longitude]);
       routeOutlineLayerRef.current = LLib.polyline(latlngs, {
-        color: '#fff',
-        weight: 9,
-        opacity: 0.92,
+        color: 'rgba(8,13,28,.58)',
+        weight: 7,
+        opacity: 0.94,
       }).addTo(map);
-      routeLayerRef.current = LLib.polyline(latlngs, {
-        color: '#7C3AED',
-        weight: 5,
-        opacity: 0.95,
-      }).addTo(map);
+      const routeSections = splitRouteByTutorMatches(route.polyline, tutorMatches);
+      routeLayerRefs.current = routeSections.map((section) => {
+        const isTutorSection = section.type === 'tutor';
+        const isActiveTutorSection = activeTutorSegment?.id === section.tutorId;
+        return LLib.polyline(
+          section.coordinates.map((point) => [point.latitude, point.longitude]),
+          {
+            color: isTutorSection ? (isActiveTutorSection ? '#22D3EE' : '#F97316') : '#7C3AED',
+            weight: isTutorSection ? 5.5 : 5,
+            opacity: 0.96,
+          }
+        ).addTo(map);
+      });
 
       if (maneuverCue?.section && maneuverCue.section.length > 1) {
         maneuverCueLayerRef.current = LLib.polyline(
           maneuverCue.section.map((point) => [point.latitude, point.longitude]),
           {
-            color: '#22D3EE',
-            weight: 7,
+            color: '#FBBF24',
+            weight: 8,
             opacity: 0.92,
           }
         ).addTo(map);
@@ -305,8 +428,8 @@ export const MapViewComponent: React.FC<Props> = ({
         const icon = LLib.divIcon({
           className: '',
           html: getRouteArrowHtml(maneuverCue.arrow.heading),
-          iconSize: [18, 20],
-          iconAnchor: [9, 10],
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
         });
         routeArrowMarkersRef.current = [LLib.marker([maneuverCue.arrow.coordinate.latitude, maneuverCue.arrow.coordinate.longitude], {
           icon,
@@ -315,11 +438,11 @@ export const MapViewComponent: React.FC<Props> = ({
         }).addTo(map)];
       }
 
-      if (!isNavigating) {
-        map.fitBounds(routeLayerRef.current.getBounds(), { padding: [70, 70] });
+      if (!isNavigating && routeOutlineLayerRef.current) {
+        map.fitBounds(routeOutlineLayerRef.current.getBounds(), { padding: [70, 70] });
       }
     }
-  }, [route, maneuverCue, isNavigating, overlayResetKey, LLib]);
+  }, [route, tutorMatches, activeTutorSegment, maneuverCue, isNavigating, overlayResetKey, LLib]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !LLib) return;
@@ -358,35 +481,21 @@ export const MapViewComponent: React.FC<Props> = ({
 
     tutorSegments.forEach((segment) => {
       const isActive = activeTutorSegment?.id === segment.id;
-      const color = isActive ? '#00c853' : '#ff8f00';
+      const color = isActive ? '#22D3EE' : '#F97316';
       const start = [segment.start_latitude, segment.start_longitude];
       const end = [segment.end_latitude, segment.end_longitude];
 
-      markersRef.current.push(
-        LLib.polyline([start, end], {
-          color,
-          weight: isActive ? 9 : 7,
-          opacity: 0.95,
-        }).addTo(map)
-      );
-
-      const labelIcon = LLib.divIcon({
-        className: '',
-        html: `<div style="background:${color};color:#fff;font-weight:900;border:2px solid #fff;border-radius:10px;padding:4px 8px;box-shadow:0 2px 4px rgba(0,0,0,.25);">Tutor</div>`,
-        iconSize: [62, 28],
-        iconAnchor: [31, 34],
-      });
       const startIcon = LLib.divIcon({
         className: '',
-        html: `<div style="width:16px;height:16px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        html: getTutorMarkerHtml('start', isActive),
+        iconSize: [98, 26],
+        iconAnchor: [49, 24],
       });
       const endIcon = LLib.divIcon({
         className: '',
-        html: `<div style="width:16px;height:16px;background:#e74c3c;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.35);"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        html: getTutorMarkerHtml('end', isActive),
+        iconSize: [98, 26],
+        iconAnchor: [49, 24],
       });
 
       markersRef.current.push(
@@ -395,8 +504,7 @@ export const MapViewComponent: React.FC<Props> = ({
           .addTo(map),
         LLib.marker(end, { icon: endIcon })
           .bindPopup(`Fine Tutor: ${segment.name}`)
-          .addTo(map),
-        LLib.marker(start, { icon: labelIcon }).addTo(map)
+          .addTo(map)
       );
     });
   }, [origin, tutorSegments, activeTutorSegment, destination, isNavigating, overlayResetKey, LLib]);

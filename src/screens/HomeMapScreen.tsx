@@ -53,8 +53,23 @@ const createCurrentLocationPlace = (coordinate: Coordinate): Place => ({
   location: coordinate,
 });
 
+const isValidLocationData = (location: LocationData | null | undefined): location is LocationData => {
+  return Boolean(
+    location &&
+      Number.isFinite(location.coordinate.latitude) &&
+      Number.isFinite(location.coordinate.longitude)
+  );
+};
+
 export const HomeMapScreen = ({ navigation }: any) => {
-  const { currentLocation, lastKnownLocation, requestLocationPermission } = useLocationStore();
+  const {
+    currentLocation,
+    lastKnownLocation,
+    heading,
+    lastValidHeading,
+    setHeading,
+    requestLocationPermission,
+  } = useLocationStore();
   const {
     origin,
     destination,
@@ -180,12 +195,11 @@ export const HomeMapScreen = ({ navigation }: any) => {
         const fallbackHeading = lastMotionSampleRef.current && sanitizeSpeedKmh(fallbackSpeed) !== null
           ? calculateBearing(lastMotionSampleRef.current.coordinate, coordinate)
           : null;
+        const gpsHeading = typeof rawHeading === 'number' && rawHeading >= 0 ? rawHeading : null;
         const candidateHeading =
           stableSpeed !== null && stableSpeed >= 4
-            ? typeof rawHeading === 'number' && rawHeading >= 0
-              ? rawHeading
-              : fallbackHeading
-            : deviceHeadingRef.current ?? fallbackHeading;
+            ? fallbackHeading ?? gpsHeading ?? deviceHeadingRef.current
+            : deviceHeadingRef.current ?? gpsHeading ?? fallbackHeading;
         const stableHeading = smoothHeading(lastStableHeadingRef.current, candidateHeading, 0.2);
         lastStableHeadingRef.current = stableHeading;
 
@@ -228,10 +242,15 @@ export const HomeMapScreen = ({ navigation }: any) => {
 
           deviceHeadingRef.current = stableHeading;
           lastStableHeadingRef.current = stableHeading;
+          setHeading(stableHeading);
 
-          const locationState = useLocationStore.getState().currentLocation;
+          const locationStoreState = useLocationStore.getState();
+          const locationState = locationStoreState.currentLocation ?? locationStoreState.lastKnownLocation;
           const currentSpeed = sanitizeSpeedKmh(locationState?.speedKmh);
-          if (locationState && currentSpeed === null) {
+          const locationAgeMs = locationState ? Date.now() - locationState.timestamp : Number.POSITIVE_INFINITY;
+          const shouldUseDeviceHeading = currentSpeed === null || currentSpeed < 4 || locationAgeMs > 2500;
+
+          if (locationState && shouldUseDeviceHeading) {
             const updatedLocation: LocationData = {
               ...locationState,
               heading: stableHeading,
@@ -276,7 +295,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
       locationSubscriptionRef.current?.remove();
       headingSubscriptionRef.current?.remove();
     };
-  }, [requestLocationPermission]);
+  }, [requestLocationPermission, setHeading]);
 
   useEffect(() => {
     if (!origin || !destination || isNavigating) return;
@@ -328,7 +347,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     tutorStore.reset();
   }, [tutorStore]);
 
-  const resetNavigationState = useCallback((mode: 'stop' | 'clear') => {
+  const resetNavigationOnly = useCallback((mode: 'stop' | 'clear') => {
     routeRequestIdRef.current += 1;
 
     if (mode === 'stop') {
@@ -357,8 +376,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [clearNavigationPlan, resetTutorRuntime, setDestination, setOrigin, setRoute, stopNavigation]);
 
   const cancelPlan = useCallback(() => {
-    resetNavigationState('clear');
-  }, [resetNavigationState]);
+    resetNavigationOnly('clear');
+  }, [resetNavigationOnly]);
 
   const useCurrentLocationAsOrigin = useCallback(() => {
     const originLocation = currentLocation ?? lastKnownLocation;
@@ -388,17 +407,17 @@ export const HomeMapScreen = ({ navigation }: any) => {
   }, [currentLocation, lastKnownLocation, resetTutorRuntime, startNavigation]);
 
   const stopActiveNavigation = useCallback(() => {
-    resetNavigationState('stop');
-  }, [resetNavigationState]);
+    resetNavigationOnly('stop');
+  }, [resetNavigationOnly]);
 
   const closeArrivalPrompt = useCallback(() => {
-    resetNavigationState('stop');
-  }, [resetNavigationState]);
+    resetNavigationOnly('stop');
+  }, [resetNavigationOnly]);
 
   const startNewDestinationAfterArrival = useCallback(() => {
-    resetNavigationState('stop');
+    resetNavigationOnly('stop');
     navigation.navigate('SearchDestination', { mode: 'destination' });
-  }, [navigation, resetNavigationState]);
+  }, [navigation, resetNavigationOnly]);
 
   const recenterOnUser = useCallback(() => {
     setIsFollowingUser(true);
@@ -632,7 +651,7 @@ export const HomeMapScreen = ({ navigation }: any) => {
     if (progress.distanceRemainingKm <= ARRIVAL_THRESHOLD_KM && !arrivalHandledRef.current) {
       arrivalHandledRef.current = true;
       speak('Sei arrivato a destinazione.');
-      resetNavigationState('stop');
+      resetNavigationOnly('stop');
       setArrivalPromptVisible(true);
       return;
     }
@@ -640,13 +659,22 @@ export const HomeMapScreen = ({ navigation }: any) => {
     if (progress.isOffRoute) {
       void rerouteFromCurrentLocation(locData.coordinate);
     }
-  }, [handleTutorSafeTick, rerouteFromCurrentLocation, resetNavigationState, updateRouteProgress]);
+  }, [handleTutorSafeTick, rerouteFromCurrentLocation, resetNavigationOnly, updateRouteProgress]);
 
   useEffect(() => {
     handleNavigationTickRef.current = handleNavigationTick;
   }, [handleNavigationTick]);
 
-  const visibleUserLocation = currentLocation ?? lastKnownLocation;
+  const visibleLocationData =
+    currentLocation ??
+    lastKnownLocation;
+  const visibleUserCoordinate = visibleLocationData?.coordinate ?? null;
+  const safeHeading =
+    heading ??
+    lastValidHeading ??
+    visibleLocationData?.heading ??
+    0;
+  const visibleUserLocation = visibleLocationData;
   const activeTutorDistanceRemainingKm = tutorStore.activeTutorSegment
     ? Math.max(0, tutorStore.activeTutorSegment.segment_length_km - tutorStore.distanceTravelledKm)
     : 0;
@@ -654,6 +682,9 @@ export const HomeMapScreen = ({ navigation }: any) => {
     visibleUserLocation?.speedKmh && visibleUserLocation.speedKmh > 0
       ? (activeTutorDistanceRemainingKm / visibleUserLocation.speedKmh) * 60
       : null;
+  const activeTutorElapsedSeconds = tutorStore.tutorEntryTime
+    ? Math.max(1, (Date.now() - tutorStore.tutorEntryTime) / 1000)
+    : null;
   const visibleTutorSegments = route ? routeTutorMatches.map((match) => match.segment) : [];
   const visibleSpeedLimit =
     tutorStore.activeTutorSegment?.speed_limit_kmh ??
@@ -666,13 +697,14 @@ export const HomeMapScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <MapViewComponent
-        userLocation={visibleUserLocation?.coordinate || null}
+        userLocation={visibleUserCoordinate}
         origin={origin?.location || null}
         route={route}
         tutorSegments={visibleTutorSegments}
+        tutorMatches={route ? routeTutorMatches : []}
         activeTutorSegment={tutorStore.activeTutorSegment}
         destination={destination?.location || null}
-        heading={visibleUserLocation?.heading ?? null}
+        heading={safeHeading}
         isNavigating={isNavigating}
         mapType={mapType}
         maneuverCue={maneuverCue}
@@ -767,6 +799,8 @@ export const HomeMapScreen = ({ navigation }: any) => {
               distanceRemainingKm={activeTutorDistanceRemainingKm}
               timeRemainingMinutes={activeTutorTimeRemainingMinutes}
               status={tutorStore.tutorStatus}
+              distanceTravelledKm={tutorStore.distanceTravelledKm}
+              elapsedSeconds={activeTutorElapsedSeconds}
             />
           ) : null}
 
